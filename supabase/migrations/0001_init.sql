@@ -237,7 +237,7 @@ create table if not exists public.match_events (
                 'impact_over_declared', 'impact_over_undone', 'last_man_activated',
                 'deadrunner_set', 'strike_switched_manually', 'bowler_selected',
                 'bowler_replaced_midover', 'retired_out', 'retired_hurt',
-                'retired_hurt_returned', 'ball_voided', 'innings_start',
+                'retired_hurt_returned', 'batsman_corrected', 'ball_voided', 'innings_start',
                 'innings_end', 'match_end')),
   payload    jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),

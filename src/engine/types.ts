@@ -120,6 +120,11 @@ export interface DeliveryInput {
   wicket?: WicketInput;
   /** R26 — scorer overrides the automatic strike result for this ball. */
   manualStrikeSwitch?: boolean;
+  /**
+   * R16c — who comes in when the app records the dismissal itself (a third
+   * dot or a third body hit). Without it the next man in the order walks in.
+   */
+  newBatsmanId?: string;
 }
 
 /** R33 — per-batsman running state. */
@@ -282,7 +287,13 @@ export type MatchEvent =
   | { type: 'deadrunner_set'; playerId: string }
   | { type: 'squad_player_added'; playerId: string }
   | { type: 'squad_player_removed'; playerId: string }
-  | { type: 'retired_hurt_returned'; playerId: string; onStrike: boolean };
+  | { type: 'retired_hurt_returned'; playerId: string; onStrike: boolean }
+  /**
+   * The scorer put the wrong man at the crease. This swaps who is batting
+   * from here on; runs already recorded stay with whoever they were credited
+   * to, because the log is what happened, not what should have happened.
+   */
+  | { type: 'batsman_corrected'; outgoingId: string; incomingId: string };
 
 export class EngineError extends Error {
   override readonly name = 'EngineError';

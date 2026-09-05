@@ -33,6 +33,7 @@ export type MatchEventType =
   | 'retired_out'
   | 'retired_hurt'
   | 'retired_hurt_returned'
+  | 'batsman_corrected'
   | 'ball_voided'
   | 'innings_start'
   | 'innings_end'
@@ -220,6 +221,12 @@ export interface AppSettingsRow {
 export type DeliveryInsert = Omit<DeliveryRow, 'created_at' | 'is_voided'> &
   Partial<Pick<DeliveryRow, 'is_voided'>>;
 
+export interface AllowedAdminRow {
+  email: string;
+  added_by: string | null;
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -268,6 +275,11 @@ export interface Database {
         Row: InningsSnapshotRow;
         Insert: Partial<InningsSnapshotRow> & { innings_id: string };
         Update: Partial<InningsSnapshotRow>;
+      };
+      allowed_admins: {
+        Row: AllowedAdminRow;
+        Insert: { email: string };
+        Update: Partial<AllowedAdminRow>;
       };
       app_settings: {
         Row: AppSettingsRow;

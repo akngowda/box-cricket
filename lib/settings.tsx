@@ -11,7 +11,7 @@
 
 import { DEFAULT_RULES } from '../src/engine/rules';
 import type { DotCarryMode, RulesConfig, RulesConfigOverride } from '../src/engine/types';
-import { NumberPicker, SettingRow, Toggle } from './ui';
+import { NumberPicker, SettingRow, tapProps, Toggle } from './ui';
 
 export function fill(over: RulesConfigOverride): RulesConfig {
   return { ...DEFAULT_RULES, ...over };
@@ -34,7 +34,7 @@ export function RulesEditor({
         <NumberPicker
           label="Overs per innings"
           value={value.oversPerInnings}
-          quick={[4, 5, 6, 8]}
+          quick={[6, 8, 12]}
           min={1}
           max={50}
           onChange={(n) => set('oversPerInnings', n)}
@@ -117,7 +117,7 @@ export function RulesEditor({
                   key={mode}
                   className={`opt ${value.dotCarryMode === mode ? 'on' : ''}`}
                   style={{ fontSize: 11, padding: '9px 3px', minHeight: 0 }}
-                  onPointerDown={() => set('dotCarryMode', mode)}
+                  {...tapProps(() => set('dotCarryMode', mode))}
                 >
                   {label}
                   <small>{hint}</small>

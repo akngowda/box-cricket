@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { matchInnings, matchRules, scoreboard } from '../lib/innings';
 import { squadCode, squadName, useDB, type DB } from '../lib/store';
 import { TabBar } from '../lib/ui';
+import { useSession } from '../lib/session';
 import type { MatchRow } from '../src/db/database.types';
 
 export default function Home() {
   const db = useDB();
+  const session = useSession();
   const live = db.matches.filter((m) => m.status === 'live');
   const done = db.matches.filter((m) => m.status === 'completed').reverse();
   const upcoming = db.matches.filter((m) => m.status === 'scheduled');
@@ -57,24 +59,19 @@ export default function Home() {
 
         {db.matches.length === 0 && (
           <div className="note" style={{ marginTop: 8 }}>
-            No matches yet. Go to <b>Admin</b> to build the weekend&apos;s two squads from the pool,
-            add a match and run the toss.
+            No matches yet. Sign in from <b>Login</b>, bottom right, to build the weekend&apos;s two
+            squads, add a match and run the toss.
           </div>
         )}
 
         <Link href="/rules" style={{ textDecoration: 'none' }}>
-          <button className="btn ghost" style={{ margin: '18px 0 9px' }}>
+          <button className="btn ghost" style={{ margin: '18px 0 20px' }}>
             Read the rules
-          </button>
-        </Link>
-        <Link href="/admin" style={{ textDecoration: 'none' }}>
-          <button className="btn ghost" style={{ marginBottom: 20 }}>
-            Admin sign in
           </button>
         </Link>
       </div>
 
-      <TabBar active="matches" />
+      <TabBar active="matches" signedIn={session.role === 'admin'} />
     </div>
   );
 }

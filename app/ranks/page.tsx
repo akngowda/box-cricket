@@ -4,10 +4,12 @@
 
 import { Rankings } from '../../lib/rankings';
 import { useDB } from '../../lib/store';
+import { useSession } from '../../lib/session';
 import { TabBar, TopBar } from '../../lib/ui';
 
 export default function RanksPage() {
   const db = useDB();
+  const session = useSession();
   return (
     <div className="app">
       <TopBar title="Rankings" back="/" />
@@ -19,7 +21,7 @@ export default function RanksPage() {
         <Rankings db={db} scopes={['overall']} />
       </div>
       <div style={{ height: 24 }} />
-      <TabBar active="ranks" />
+      <TabBar active="ranks" signedIn={session.role === 'admin'} />
     </div>
   );
 }

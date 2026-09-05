@@ -94,6 +94,10 @@ function toEngineEvent(type: string, payload: Record<string, unknown>): MatchEve
       return typeof payload.playerId === 'string' ? { type: 'deadrunner_set', playerId: payload.playerId } : null;
     case 'squad_player_added':
       return typeof payload.playerId === 'string' ? { type: 'squad_player_added', playerId: payload.playerId } : null;
+    case 'batsman_corrected':
+      return typeof payload.outgoingId === 'string' && typeof payload.incomingId === 'string'
+        ? { type: 'batsman_corrected', outgoingId: payload.outgoingId, incomingId: payload.incomingId }
+        : null;
     case 'retired_hurt_returned':
       return typeof payload.playerId === 'string'
         ? { type: 'retired_hurt_returned', playerId: payload.playerId, onStrike: payload.onStrike === true }

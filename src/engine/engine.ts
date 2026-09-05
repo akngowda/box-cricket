@@ -277,6 +277,20 @@ export function applyEvent(
       return s;
     }
 
+    // Correcting a mis-tapped batsman: swap who is at the crease.
+    case 'batsman_corrected': {
+      const incoming = s.batsmen[event.incomingId];
+      if (!incoming) throw new EngineError('That player is not in the batting order', 'R1');
+      if (incoming.isOut) throw new EngineError('An out batsman never bats again', 'R27');
+      if (s.strikerId !== event.outgoingId && s.nonStrikerId !== event.outgoingId) {
+        throw new EngineError('That batsman is not at the crease', 'R26');
+      }
+      incoming.hasBatted = true;
+      if (s.strikerId === event.outgoingId) s.strikerId = event.incomingId;
+      else s.nonStrikerId = event.incomingId;
+      return s;
+    }
+
     // R27 — a retired-hurt batsman resumes from where he left off.
     case 'retired_hurt_returned': {
       const b = s.batsmen[event.playerId];
@@ -518,7 +532,7 @@ export function applyDelivery(
           bowlerCredited: true,
           fielderId: null,
         };
-        newBatsmanTookGuard = applyDismissal(s, dismissal, bowlerId, undefined);
+        newBatsmanTookGuard = applyDismissal(s, dismissal, bowlerId, input.newBatsmanId);
       }
     }
 
@@ -543,7 +557,7 @@ export function applyDelivery(
             bowlerCredited: true,
             fielderId: null,
           };
-          newBatsmanTookGuard = applyDismissal(s, dismissal, bowlerId, undefined);
+          newBatsmanTookGuard = applyDismissal(s, dismissal, bowlerId, input.newBatsmanId);
         }
       }
     }

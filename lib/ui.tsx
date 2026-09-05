@@ -8,6 +8,49 @@
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 
+/**
+ * Tap, not scroll.
+ *
+ * Firing on pointerdown is what makes the pad feel instant, but on a phone the
+ * first touch of a scroll lands on a button too — which was committing balls
+ * by accident. So we remember where the finger went down and only act if it
+ * comes up in roughly the same place, soon after. A drag scrolls; a tap taps.
+ */
+const SLOP = 12; // px of movement still counted as a tap
+const HOLD = 700; // ms after which it is a long press, not a tap
+
+interface Pointer {
+  x: number;
+  y: number;
+  t: number;
+}
+
+export function tapProps(fn?: () => void, pattern: number | number[] = 10) {
+  let start: Pointer | null = null;
+
+  return {
+    onPointerDown: (e: React.PointerEvent): void => {
+      start = { x: e.clientX, y: e.clientY, t: Date.now() };
+    },
+    onPointerUp: (e: React.PointerEvent): void => {
+      const from = start;
+      start = null;
+      if (!from) return;
+      const moved = Math.hypot(e.clientX - from.x, e.clientY - from.y);
+      if (moved > SLOP || Date.now() - from.t > HOLD) return; // that was a scroll
+      navigator.vibrate?.(pattern);
+      fn?.();
+    },
+    onPointerCancel: (): void => {
+      start = null;
+    },
+    onPointerLeave: (): void => {
+      start = null;
+    },
+  };
+}
+
+/** Kept for handlers that are not on a scrollable surface. */
 export function tap(fn?: () => void, pattern: number | number[] = 10) {
   return (): void => {
     navigator.vibrate?.(pattern);
@@ -35,7 +78,7 @@ export function Btn({
       className={className}
       style={style}
       disabled={disabled}
-      onPointerDown={disabled ? undefined : tap(onTap, buzz ?? 10)}
+      {...(disabled ? {} : tapProps(onTap, buzz ?? 10))}
     >
       {children}
     </button>
@@ -81,7 +124,7 @@ export function Sheet({
 }
 
 export function Toggle({ on, onTap }: { on: boolean; onTap: () => void }) {
-  return <button className={`tog ${on ? 'on' : ''}`} onPointerDown={tap(onTap)} aria-pressed={on} />;
+  return <button className={`tog ${on ? 'on' : ''}`} {...tapProps(onTap)} aria-pressed={on} />;
 }
 
 export function SettingRow({
@@ -108,13 +151,16 @@ export function SettingRow({
 
 export type Tab = 'matches' | 'series' | 'ranks' | 'rules' | 'admin';
 
-export function TabBar({ active }: { active: Tab }) {
+export function TabBar({ active, signedIn = false }: { active: Tab; signedIn?: boolean }) {
+  // A visitor sees "Login" in the last slot; once signed in it becomes Admin.
   const tabs: Array<{ id: Tab; label: string; icon: string; href: string }> = [
     { id: 'matches', label: 'Matches', icon: '🏏', href: '/' },
     { id: 'series', label: 'Series', icon: '🏆', href: '/series' },
     { id: 'ranks', label: 'Ranks', icon: '📊', href: '/ranks' },
     { id: 'rules', label: 'Rules', icon: '📖', href: '/rules' },
-    { id: 'admin', label: 'Admin', icon: '⚙', href: '/admin' },
+    signedIn
+      ? { id: 'admin', label: 'Admin', icon: '⚙', href: '/admin' }
+      : { id: 'admin', label: 'Login', icon: '→', href: '/admin' },
   ];
   return (
     <div className="tabbar" style={{ gridTemplateColumns: `repeat(${tabs.length},1fr)` }}>
@@ -199,7 +245,7 @@ export function NumberPicker({
       <button
         className="field"
         style={{ width, textAlign: 'center', padding: 10, fontFamily: 'var(--font-num)', fontSize: 20, fontWeight: 600 }}
-        onPointerDown={tap(() => setOpen(true))}
+        {...tapProps(() => setOpen(true))}
       >
         {value}
       </button>
@@ -223,7 +269,7 @@ export function NumberPicker({
                   <button
                     key={n}
                     className={`opt ${value === n && typed === null ? 'on' : ''}`}
-                    onPointerDown={tap(() => {
+                    {...tapProps(() => {
                       onChange(n);
                       close();
                     })}
@@ -239,19 +285,19 @@ export function NumberPicker({
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => (
               <button
                 key={d}
-                onPointerDown={tap(() => setTyped(((typed ?? '') + d).replace(/^0+/, '').slice(0, 2)))}
+                {...tapProps(() => setTyped(((typed ?? '') + d).replace(/^0+/, '').slice(0, 2)))}
               >
                 {d}
               </button>
             ))}
-            <button onPointerDown={tap(() => setTyped(null))} style={{ fontSize: 15 }}>
+            <button {...tapProps(() => setTyped(null))} style={{ fontSize: 15 }}>
               clear
             </button>
-            <button onPointerDown={tap(() => setTyped(((typed ?? '') + '0').replace(/^0+/, '').slice(0, 2)))}>
+            <button {...tapProps(() => setTyped(((typed ?? '') + '0').replace(/^0+/, '').slice(0, 2)))}>
               0
             </button>
             <button
-              onPointerDown={tap(() => setTyped((typed ?? '').slice(0, -1)))}
+              {...tapProps(() => setTyped((typed ?? '').slice(0, -1)))}
               style={{ fontSize: 18 }}
             >
               ⌫

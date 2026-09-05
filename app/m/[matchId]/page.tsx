@@ -13,11 +13,13 @@ import { isAdmin, useCurrentEmail } from '../../../lib/auth';
 import { matchInnings, matchRules, scoreboard } from '../../../lib/innings';
 import { Rankings } from '../../../lib/rankings';
 import { playerName, squadCode, squadName, useDB } from '../../../lib/store';
+import { useSession } from '../../../lib/session';
 import { TabBar, TopBar } from '../../../lib/ui';
 
 export default function MatchView() {
   const params = useParams<{ matchId: string }>();
   const db = useDB();
+  const session = useSession();
   const email = useCurrentEmail();
   const match = db.matches.find((m) => m.id === params.matchId);
 
@@ -177,7 +179,7 @@ export default function MatchView() {
       )}
 
       <div style={{ height: 24 }} />
-      <TabBar active="matches" />
+      <TabBar active="matches" signedIn={session.role === 'admin'} />
     </div>
   );
 }

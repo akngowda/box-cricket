@@ -30,7 +30,7 @@ import {
   voidLastBall,
   type DB,
 } from '../../../lib/store';
-import { Btn, Sheet, TopBar } from '../../../lib/ui';
+import { Btn, Sheet, tapProps, TopBar } from '../../../lib/ui';
 import { toDeliveryRow } from '../../../src/db/mappers';
 import {
   applyDelivery,
@@ -103,6 +103,8 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const [sel, setSel] = useState<Selection>(EMPTY);
   const [sheet, setSheet] = useState<SheetName>('none');
   const [audio, setAudio] = useState(rules.audioPerBall);
+  const [fixing, setFixing] = useState<string | null>(null);
+  const [autoIn, setAutoIn] = useState<string | null>(null);
   const spoken = useRef<string | null>(null);
 
   const board = current ? scoreboard(db, current, rules) : null;
@@ -183,7 +185,14 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   // --- commit ---------------------------------------------------------------
   const commit = (wicket?: DeliveryInput['wicket']): void => {
     const id = uuid();
-    const real: DeliveryInput = { ...input, id, ...(wicket ? { wicket } : {}) };
+    const real: DeliveryInput = {
+      ...input,
+      id,
+      ...(wicket ? { wicket } : {}),
+      // R16c — the app records a third dot or third body hit itself, but the
+      // scorer still says who walks in.
+      ...(autoIn ? { newBatsmanId: autoIn } : {}),
+    };
     const out = tryApplyFull(state, real, rules);
     if (!out) return;
     mutate((d) => {
@@ -194,6 +203,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     if (audio && rules.audioPerBall) speak(out.result.announcement);
     navigator.vibrate?.(out.result.wicket ? [30, 50, 30] : 10);
     setSel(EMPTY);
+    setAutoIn(null);
     setSheet('none');
   };
 
@@ -232,7 +242,12 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             <button
               className={`tog ${audio ? 'on' : ''}`}
               style={{ width: 38, height: 22 }}
-              onPointerDown={() => setAudio((v) => !v)}
+              {...tapProps(() => {
+                setAudio((v) => {
+                  if (!v) unlockSpeech(); // must happen inside the gesture
+                  return !v;
+                });
+              })}
             />
             🔊
           </div>
@@ -261,58 +276,56 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
       )}
       {impactBallNext && !done && <div className="banner impact">◆ Next legal ball is the impact ball ×2</div>}
       {preview?.wicket?.automatic && (
-        <div className="banner last">
-          ✕ {preview.wicket.type === 'dotout' ? '3rd straight dot' : 'body hit'} — {playerName(db, preview.wicket.playerOutId)} is
-          OUT ({WICKET_LABEL[preview.wicket.type]}), auto-recorded
-        </div>
+        <>
+          <div className="banner last">
+            ✕ {preview.wicket.type === 'dotout' ? '3rd straight dot' : '3rd body hit'} —{' '}
+            {playerName(db, preview.wicket.playerOutId)} is OUT ({WICKET_LABEL[preview.wicket.type]})
+          </div>
+          <div className="pad" style={{ paddingTop: 8 }}>
+            <div className="lbl" style={{ margin: '0 0 4px' }}>Who comes in?</div>
+            <div className="grid3">
+              {state.battingOrder
+                .filter((id) => !state.batsmen[id]?.hasBatted && !state.batsmen[id]?.isOut)
+                .map((id) => (
+                  <Opt key={id} on={autoIn === id} onTap={() => setAutoIn(id)} style={{ fontSize: 12 }}>
+                    {playerName(db, id)}
+                  </Opt>
+                ))}
+            </div>
+          </div>
+        </>
       )}
 
-      {/* live stats */}
-      <div className="pad" style={{ paddingTop: 10 }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div className="statbox">
-            <div className="k">{playerName(db, state.strikerId)} ● on strike</div>
-            <div className="v">
-              {striker?.runs ?? 0} <span className="sub" style={{ fontSize: 12 }}>({striker?.ballsFaced ?? 0})</span>
-            </div>
-            <Hist history={striker?.ballHistory ?? []} />
-          </div>
-          <div className="statbox">
-            <div className="k">{state.lastManActive ? 'deadrunner' : playerName(db, state.nonStrikerId)}</div>
-            <div className="v">
-              {state.lastManActive ? (
-                playerName(db, state.deadrunnerId)
-              ) : (
-                <>
-                  {nonStriker?.runs ?? 0}{' '}
-                  <span className="sub" style={{ fontSize: 12 }}>({nonStriker?.ballsFaced ?? 0})</span>
-                </>
-              )}
-            </div>
-            {!state.lastManActive && <Hist history={nonStriker?.ballHistory ?? []} />}
-          </div>
-        </div>
+      {/* Live stats, one line each: who, his score, and his pips. Tapping a
+          name corrects a mis-tapped batsman. */}
+      <div className="pad" style={{ paddingTop: 6 }}>
+        <BatLine
+          db={db}
+          id={state.strikerId}
+          state={state}
+          label="on strike"
+          onFix={() => setFixing(state.strikerId)}
+        />
+        {state.nonStrikerId && (
+          <BatLine
+            db={db}
+            id={state.nonStrikerId}
+            state={state}
+            label={state.lastManActive ? 'other end' : ''}
+            onFix={() => setFixing(state.nonStrikerId)}
+          />
+        )}
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-          <div className="statbox">
-            <div className="k">bowling — {playerName(db, state.currentBowlerId)}</div>
-            <div className="v">
-              {Math.floor((bowler?.legalBalls ?? 0) / rules.ballsPerOver)}.{(bowler?.legalBalls ?? 0) % rules.ballsPerOver}-
-              {bowler?.dotBalls ?? 0}-{bowler?.runsConceded ?? 0}-{bowler?.wickets ?? 0}
-            </div>
-          </div>
-          <div className="statbox">
-            <div className="k">this over</div>
-            <div className="v" style={{ fontSize: 13, fontFamily: 'var(--font-ui)' }}>
-              {thisOver.length === 0 ? '—' : thisOver.map(token).join(' · ')}
-            </div>
-          </div>
-        </div>
-
-        <div className="key" style={{ marginTop: 8 }}>
-          <span><i className="dot" style={{ background: 'var(--cool)' }} />scored</span>
-          <span><i className="dot" style={{ background: 'var(--strike)' }} />dot</span>
-          <span><i className="dot" style={{ background: 'var(--body)' }} />body</span>
+        <div className="row" style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
+          <span>
+            {playerName(db, state.currentBowlerId)}{' '}
+            <span style={{ fontFamily: 'var(--font-num)', fontSize: 14, color: 'var(--chalk)' }}>
+              {Math.floor((bowler?.legalBalls ?? 0) / rules.ballsPerOver)}.
+              {(bowler?.legalBalls ?? 0) % rules.ballsPerOver}-{bowler?.runsConceded ?? 0}-
+              {bowler?.wickets ?? 0}
+            </span>
+          </span>
+          <span>{thisOver.length === 0 ? 'new over' : thisOver.map(token).join(' · ')}</span>
         </div>
       </div>
 
@@ -346,13 +359,12 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
                   key={`${contact}${v}`}
                   className={`declbtn ${contact} ${sel.declared === v && sel.contact === contact ? 'on' : ''}`}
                   disabled={dis.runs}
-                  onPointerDown={() =>
-                    setSel((s) =>
+                  {...tapProps(() => setSel((s) =>
                       s.declared === v && s.contact === contact
                         ? { ...s, declared: null, contact: 'none' }
                         : { ...s, declared: v, contact },
                     )
-                  }
+                  )}
                 >
                   {v}
                   <small>zone {i + 1}</small>
@@ -369,21 +381,21 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             <button
               className={`physbtn dotbtn ${sel.dot ? 'on' : ''}`}
               disabled={dis.dot}
-              onPointerDown={() => setSel((s) => (s.dot ? EMPTY : { ...EMPTY, dot: true }))}
+              {...tapProps(() => setSel((s) => (s.dot ? EMPTY : { ...EMPTY, dot: true })))}
             >
               Dot<small>{dotLocked ? 'body hit' : '0 & 0'}</small>
             </button>
             <button
               className={`physbtn ${sel.phys === 1 ? 'on' : ''}`}
               disabled={dis.runs}
-              onPointerDown={() => setSel((s) => ({ ...s, phys: s.phys === 1 ? 0 : 1 }))}
+              {...tapProps(() => setSel((s) => ({ ...s, phys: s.phys === 1 ? 0 : 1 })))}
             >
               1
             </button>
             <button
               className={`physbtn ${sel.phys > 1 ? 'on' : ''}`}
               disabled={dis.runs}
-              onPointerDown={() => (sel.phys > 1 ? setSel((s) => ({ ...s, phys: 0 })) : setSheet('phys'))}
+              {...tapProps(() => (sel.phys > 1 ? setSel((s) => ({ ...s, phys: 0 })) : setSheet('phys')))}
             >
               {sel.phys > 1 ? (
                 <>
@@ -542,10 +554,10 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             {[2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
               <button
                 key={n}
-                onPointerDown={() => {
+                {...tapProps(() => {
                   setSel((s) => ({ ...s, phys: n }));
                   setSheet('none');
-                }}
+                })}
               >
                 {n}
               </button>
@@ -562,6 +574,19 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
           innings={current}
           onClose={() => setSheet('none')}
           onConfirm={(w) => commit(w)}
+        />
+      )}
+
+      {fixing && (
+        <FixBatsman
+          db={db}
+          state={state}
+          outgoingId={fixing}
+          onClose={() => setFixing(null)}
+          onPick={(incomingId) => {
+            event('batsman_corrected', { outgoingId: fixing, incomingId });
+            setFixing(null);
+          }}
         />
       )}
 
@@ -592,13 +617,76 @@ function Opt({
       className={`opt ${on ? 'on' : ''}`}
       disabled={disabled}
       style={{ fontSize: 13, ...style }}
-      onPointerDown={() => {
-        navigator.vibrate?.(10);
-        onTap();
-      }}
+      {...tapProps(onTap)}
     >
       {children}
     </button>
+  );
+}
+
+/** Name, state, score and pips on a single line. */
+function BatLine({
+  db,
+  id,
+  state,
+  label,
+  onFix,
+}: {
+  db: DB;
+  id: string | null;
+  state: InningsState;
+  label: string;
+  onFix: () => void;
+}) {
+  if (!id) return null;
+  const b = state.batsmen[id];
+  return (
+    <div className="batline">
+      <span className="who" {...tapProps(onFix)}>
+        {playerName(db, id)}
+        {label && <span className="sub"> ({label})</span>}
+      </span>
+      <span className="fig">
+        {b?.runs ?? 0}
+        <span style={{ fontSize: 12, color: 'var(--muted)' }}>({b?.ballsFaced ?? 0})</span>
+      </span>
+      <Hist history={b?.ballHistory ?? []} />
+    </div>
+  );
+}
+
+/** The wrong man was put at the crease — swap him for the right one. */
+function FixBatsman({
+  db,
+  state,
+  outgoingId,
+  onClose,
+  onPick,
+}: {
+  db: DB;
+  state: InningsState;
+  outgoingId: string;
+  onClose: () => void;
+  onPick: (incomingId: string) => void;
+}) {
+  const choices = state.battingOrder.filter(
+    (id) => id !== state.strikerId && id !== state.nonStrikerId && !state.batsmen[id]?.isOut,
+  );
+  return (
+    <Sheet title={`Replace ${playerName(db, outgoingId)}`} onClose={onClose}>
+      <div className="hint" style={{ marginBottom: 10 }}>
+        For a mis-tap: this puts someone else at the crease from here on. Runs already scored stay
+        with whoever they were credited to — undo the ball instead if they went to the wrong man.
+      </div>
+      <div className="grid3">
+        {choices.map((id) => (
+          <Opt key={id} onTap={() => onPick(id)} style={{ fontSize: 12 }}>
+            {playerName(db, id)}
+          </Opt>
+        ))}
+      </div>
+      {choices.length === 0 && <div className="note">Nobody else is available.</div>}
+    </Sheet>
   );
 }
 
@@ -1102,10 +1190,31 @@ function uuid(): string {
     : Math.random().toString(36).slice(2);
 }
 
+/**
+ * iOS will not speak until speechSynthesis has been used inside a real user
+ * gesture, and it stays silent forever if the first call comes from a timer or
+ * a network callback. So the audio toggle primes it with a silent utterance,
+ * and everything after that works.
+ */
+function unlockSpeech(): void {
+  try {
+    const u = new SpeechSynthesisUtterance('');
+    u.volume = 0;
+    speechSynthesis.speak(u);
+  } catch {
+    /* nothing to unlock on this browser */
+  }
+}
+
 function speak(line: string): void {
   try {
+    if (typeof speechSynthesis === 'undefined') return;
+    // A queue left paused by a backgrounded tab is the other common cause of
+    // silence on a phone.
+    if (speechSynthesis.paused) speechSynthesis.resume();
     const u = new SpeechSynthesisUtterance(line);
     u.rate = 1.15;
+    u.lang = 'en-IN';
     speechSynthesis.speak(u);
   } catch {
     /* audio is never allowed to break scoring */

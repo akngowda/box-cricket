@@ -79,13 +79,22 @@ beforeAll(async () => {
   await db.exec(sql('supabase/migrations/0001_init.sql'));
   await db.exec(sql('supabase/migrations/0002_rls.sql'));
   await db.exec(sql('supabase/migrations/0003_admins_and_audit.sql'));
+  await db.exec(sql('supabase/migrations/0004_allowed_admins.sql'));
 
   // Users: the profiles rows appear via the on_auth_user_created trigger.
   await db.exec(`
+    insert into public.allowed_admins (email) values ('scorer@example.com'), ('other@example.com');
     insert into auth.users (id, email) values
       ('${ID.admin}', 'akarsha.kng@gmail.com'),
       ('${ID.scorer}', 'scorer@example.com'),
       ('${ID.otherScorer}', 'other@example.com');
+    -- Everyone on the allowlist signs up as an admin, but the RLS tests need
+    -- two plain scorers. The role guard only lets the super admin change a
+    -- role, so act as him while seeding.
+    select set_config('request.jwt.claim.sub', '${ID.admin}', false);
+    update public.profiles set role = 'scorer'
+      where id in ('${ID.scorer}', '${ID.otherScorer}');
+    select set_config('request.jwt.claim.sub', '', false);
 
     insert into public.players (id, name) values
       ('${ID.p1}', 'Rahul'), ('${ID.p2}', 'Kiran'), ('${ID.p3}', 'Arjun');
@@ -341,6 +350,56 @@ describe('0003 — admins and the activity log', () => {
 
   it('R35 — the activity log is not public', async () => {
     const msg = await expectRejected('anon', `select * from public.audit_log`);
+    expect(msg).toMatch(/permission denied/i);
+  });
+});
+
+describe('0004 — only people the super admin added can sign up', () => {
+  it('an email that is not on the list cannot create an account at all', async () => {
+    const msg = await expectRejected(
+      'owner',
+      `insert into auth.users (id, email)
+       values ('00000000-0000-0000-0000-0000000000ff', 'stranger@example.com')`,
+    );
+    expect(msg).toMatch(/has not been added by the administrator/);
+  });
+
+  it('adding the email first lets that person sign up, as an admin', async () => {
+    await as('owner', `insert into public.allowed_admins (email) values ('newmate@example.com')`);
+    await as(
+      'owner',
+      `insert into auth.users (id, email)
+       values ('00000000-0000-0000-0000-0000000000fe', 'newmate@example.com')`,
+    );
+    const rows = (await as(
+      'owner',
+      `select role from public.profiles where email = 'newmate@example.com'`,
+    )) as Array<{ role: string }>;
+    expect(rows[0]?.role).toBe('admin');
+  });
+
+  it('only the super admin edits the list, and he cannot be removed from it', async () => {
+    // A plain admin's insert is filtered by RLS, so the list does not grow.
+    await as('otherScorer', `insert into public.allowed_admins (email) values ('sneak@example.com')`).catch(
+      () => undefined,
+    );
+    const sneak = (await as(
+      'owner',
+      `select count(*)::int as n from public.allowed_admins where email = 'sneak@example.com'`,
+    )) as Array<{ n: number }>;
+    expect(sneak[0]?.n).toBe(0);
+
+    // The super admin's own entry survives his own delete.
+    await as('admin', `delete from public.allowed_admins where email = 'akarsha.kng@gmail.com'`);
+    const still = (await as(
+      'owner',
+      `select count(*)::int as n from public.allowed_admins where email = 'akarsha.kng@gmail.com'`,
+    )) as Array<{ n: number }>;
+    expect(still[0]?.n).toBe(1);
+  });
+
+  it('R35 — the allowlist is not public', async () => {
+    const msg = await expectRejected('anon', `select * from public.allowed_admins`);
     expect(msg).toMatch(/permission denied/i);
   });
 });

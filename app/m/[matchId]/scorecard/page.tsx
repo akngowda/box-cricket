@@ -9,6 +9,7 @@ import { useParams } from 'next/navigation';
 import { matchInnings, matchRules, scoreboard } from '../../../../lib/innings';
 import { fmt, overs, strikeRate } from '../../../../lib/stats';
 import { playerName, squadName, useDB, type DB } from '../../../../lib/store';
+import { useSession } from '../../../../lib/session';
 import { PrintButton, PrintHeader, TabBar, TopBar } from '../../../../lib/ui';
 import type { InningsRow } from '../../../../src/db/database.types';
 import type { RulesConfig, WicketType } from '../../../../src/engine/types';
@@ -27,6 +28,7 @@ const OUT_LABEL: Record<WicketType, string> = {
 export default function Scorecard() {
   const params = useParams<{ matchId: string }>();
   const db = useDB();
+  const session = useSession();
   const match = db.matches.find((m) => m.id === params.matchId);
 
   if (!match) {
@@ -65,7 +67,7 @@ export default function Scorecard() {
         <PrintButton label="Save this scorecard as PDF" />
       </div>
       <div style={{ height: 24 }} />
-      <TabBar active="matches" />
+      <TabBar active="matches" signedIn={session.role === 'admin'} />
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
   type RankKey,
 } from './stats';
 import type { DB } from './store';
+import { tapProps } from './ui';
 
 export type Scope = 'match' | 'series' | 'overall';
 
@@ -66,7 +67,7 @@ export function Rankings({
           {scopes.map((s) => (
             <button
               key={s}
-              onPointerDown={() => setScope(s)}
+              {...tapProps(() => setScope(s))}
               style={{
                 flex: 1,
                 background: 'none',
@@ -89,7 +90,7 @@ export function Rankings({
         {BOARDS.map((b) => (
           <button
             key={b.key}
-            onPointerDown={() => setBoard(b.key)}
+            {...tapProps(() => setBoard(b.key))}
             className={`chip ${board === b.key ? 'amber' : ''}`}
             style={{ whiteSpace: 'nowrap', background: 'none' }}
           >

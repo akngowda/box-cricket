@@ -5,10 +5,12 @@
 import Link from 'next/link';
 import { seriesState } from '../../lib/stats';
 import { squadCode, useDB } from '../../lib/store';
+import { useSession } from '../../lib/session';
 import { TabBar, TopBar } from '../../lib/ui';
 
 export default function AllSeries() {
   const db = useDB();
+  const session = useSession();
   const list = db.series.filter((s) => s.deleted_at === null).slice().reverse();
 
   return (
@@ -37,7 +39,7 @@ export default function AllSeries() {
         })}
       </div>
       <div style={{ height: 24 }} />
-      <TabBar active="series" />
+      <TabBar active="series" signedIn={session.role === 'admin'} />
     </div>
   );
 }

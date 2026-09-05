@@ -9,10 +9,10 @@
  */
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { isAdmin, isSuperAdmin, normalise, SUPER_ADMIN } from '../../lib/auth';
 import { useSession, useSignInWithPassword, useSignOut } from '../../lib/session';
-import { isRemote } from '../../lib/supabase';
+import { isRemote, supabase } from '../../lib/supabase';
 import { fill, RulesEditor } from '../../lib/settings';
 import {
   activity,
@@ -43,9 +43,10 @@ export default function Admin() {
 
   const activePlayers = db.players.filter((p) => p.deleted_at === null);
 
-  // With Supabase wired the role comes from the database; without it, from the
-  // local admin list. Either way nothing behind this screen is anonymous.
-  const admin = isRemote ? session.role === 'admin' : isAdmin(email, db.admins);
+  // The only thing that opens this screen is an admin role read from the
+  // database. There is deliberately no offline or local fallback: without a
+  // real session there is no admin, so a stale browser cannot let anyone in.
+  const admin = isRemote && session.role === 'admin';
 
   if (session.loading) {
     return (
@@ -57,7 +58,7 @@ export default function Admin() {
       </div>
     );
   }
-  if (!admin) return <SignIn email={email} knownAdmins={db.admins} />;
+  if (!admin) return <SignIn email={email} />;
 
   return (
     <div className="app">
@@ -101,7 +102,7 @@ export default function Admin() {
             <Btn className="btn" onTap={() => setPanel('admins')}>
               Admins
               <div className="sub" style={{ marginTop: 3, fontWeight: 400 }}>
-                {db.admins.length + 1} with access
+                who may sign up
               </div>
             </Btn>
           ) : (
@@ -344,10 +345,13 @@ function NewSeriesSheet({ onClose }: { onClose: () => void }) {
 }
 
 /**
- * Real sign-in when Supabase is configured: a password, a session, and a role
- * read from the database. First time for an email creates the account.
+ * Sign in, or set a password for the first time.
+ *
+ * There is no open sign-up: the database refuses to create an account for an
+ * email the super admin has not added. So the same form does both jobs — the
+ * first time you use it, the password you type becomes your password.
  */
-function SignIn({ email, knownAdmins }: { email: string | null; knownAdmins: string[] }) {
+function SignIn({ email }: { email: string | null }) {
   const signIn = useSignInWithPassword();
   const signOut = useSignOut();
   const [value, setValue] = useState(email ?? '');
@@ -355,17 +359,32 @@ function SignIn({ email, knownAdmins }: { email: string | null; knownAdmins: str
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const localKnown =
-    normalise(value) === SUPER_ADMIN || knownAdmins.map(normalise).includes(normalise(value));
-  const ready = isRemote ? /.+@.+\..+/.test(value) && password.length >= 6 : localKnown;
+  // Without a database there is no way to check anybody, so there is no way in.
+  if (!isRemote) {
+    return (
+      <div className="app">
+        <TopBar title="Admin" back="/" />
+        <div className="pad">
+          <div className="note" style={{ borderColor: 'var(--strike)' }}>
+            <b>This build has no database connection.</b> Admin needs one to check who you are,
+            so it stays closed. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY,
+            then redeploy.
+          </div>
+        </div>
+        <TabBar active="admin" />
+      </div>
+    );
+  }
+
+  const ready = /.+@.+\..+/.test(value) && password.length >= 6;
 
   return (
     <div className="app">
       <TopBar title="Admin sign in" back="/" />
       <div className="pad">
         <div className="note" style={{ marginBottom: 14 }}>
-          Admin can set up series, build squads, run the toss and score. Every change is stamped
-          with your email and shows up in <b>Activity</b>.
+          Only people the administrator has added can sign in. The first time you sign in, the
+          password you type here becomes your password.
         </div>
 
         <div className="lbl">Your email</div>
@@ -378,31 +397,18 @@ function SignIn({ email, knownAdmins }: { email: string | null; knownAdmins: str
           onChange={(e) => setValue(e.target.value)}
         />
 
-        {isRemote && (
-          <>
-            <div className="lbl">Password</div>
-            <input
-              className="field"
-              type="password"
-              placeholder="at least 6 characters"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <div className="hint" style={{ marginTop: 8 }}>
-              First time with this email? Signing in creates the account.
-            </div>
-          </>
-        )}
-
-        {!isRemote && value.length > 0 && !localKnown && (
-          <div className="note" style={{ marginTop: 10, borderColor: 'var(--strike)' }}>
-            That email has no admin access. Ask {SUPER_ADMIN} to add it.
-          </div>
-        )}
+        <div className="lbl">Password</div>
+        <input
+          className="field"
+          type="password"
+          placeholder="at least 6 characters"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
 
         {message && (
-          <div className="note" style={{ marginTop: 10, borderColor: 'var(--sodium-dim)' }}>
+          <div className="note" style={{ marginTop: 12, borderColor: 'var(--strike)' }}>
             {message}
           </div>
         )}
@@ -420,7 +426,7 @@ function SignIn({ email, knownAdmins }: { email: string | null; knownAdmins: str
             });
           }}
         >
-          {busy ? 'Signing in…' : 'Continue'}
+          {busy ? 'Signing in…' : 'Sign in'}
         </Btn>
 
         {email && (
@@ -434,42 +440,83 @@ function SignIn({ email, knownAdmins }: { email: string | null; knownAdmins: str
   );
 }
 
-/** Only the super admin sees this. He cannot remove himself. */
+/**
+ * The allowlist. Adding an email here is the only way anyone gets an account —
+ * they then set their own password on first sign-in. Nothing is emailed.
+ */
 function AdminsSheet({ onClose }: { onClose: () => void }) {
-  const db = useDB();
-  const mutate = useMutate();
+  const [rows, setRows] = useState<Array<{ email: string; created_at: string }>>([]);
+  const [signedUp, setSignedUp] = useState<Set<string>>(new Set());
   const [email, setEmail] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const valid = /.+@.+\..+/.test(email.trim());
 
+  const load = useCallback(async () => {
+    const client = supabase();
+    const [list, profiles] = await Promise.all([
+      client.from('allowed_admins').select('email, created_at').order('created_at'),
+      client.from('profiles').select('email'),
+    ]);
+    if (list.error) setError(list.error.message);
+    setRows((list.data ?? []) as Array<{ email: string; created_at: string }>);
+    setSignedUp(
+      new Set(
+        ((profiles.data ?? []) as Array<{ email: string | null }>)
+          .map((p) => (p.email ?? '').toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   return (
-    <Sheet title="Admins" onClose={onClose}>
+    <Sheet title="Who can sign in" onClose={onClose}>
       <div className="hint" style={{ marginBottom: 12 }}>
-        Anyone listed here can run the admin area and score matches. Their email is recorded
-        against every change they make.
+        Add an email and tell that person to open Admin and pick their own password. Nobody who
+        is not on this list can create an account, and no invitation is sent.
       </div>
 
-      <div className="row" style={{ padding: '9px 2px', borderBottom: '1px solid #1B2A22' }}>
-        <span style={{ fontSize: 13.5 }}>{SUPER_ADMIN}</span>
-        <span className="chip amber">super admin</span>
-      </div>
+      {rows.map((r) => {
+        const isSuper = r.email.toLowerCase() === SUPER_ADMIN;
+        return (
+          <div key={r.email} className="row" style={{ padding: '9px 2px', borderBottom: '1px solid #1B2A22' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.email}</div>
+              <div className="sub" style={{ fontSize: 10.5 }}>
+                {isSuper ? 'super admin' : signedUp.has(r.email.toLowerCase()) ? 'signed up' : 'has not signed in yet'}
+              </div>
+            </div>
+            {!isSuper && (
+              <Btn
+                className="btn danger"
+                style={{ width: 84, padding: '7px 4px', fontSize: 12 }}
+                onTap={() => {
+                  void supabase()
+                    .from('allowed_admins')
+                    .delete()
+                    .eq('email', r.email)
+                    .then(() => load());
+                }}
+              >
+                Remove
+              </Btn>
+            )}
+          </div>
+        );
+      })}
 
-      {db.admins.map((a) => (
-        <div key={a} className="row" style={{ padding: '9px 2px', borderBottom: '1px solid #1B2A22' }}>
-          <span style={{ fontSize: 13.5 }}>{a}</span>
-          <Btn
-            className="btn danger"
-            style={{ width: 84, padding: '7px 4px', fontSize: 12 }}
-            onTap={() => mutate((d) => removeAdmin(d, a))}
-          >
-            Remove
-          </Btn>
-        </div>
-      ))}
+      {error && (
+        <div className="note" style={{ marginTop: 10, borderColor: 'var(--strike)' }}>{error}</div>
+      )}
 
       <div className="row" style={{ marginTop: 14 }}>
         <input
           className="field"
-          placeholder="new admin email"
+          placeholder="teammate@example.com"
           inputMode="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -477,14 +524,30 @@ function AdminsSheet({ onClose }: { onClose: () => void }) {
         <Btn
           className="btn primary"
           style={{ width: 84 }}
-          disabled={!valid}
+          disabled={!valid || busy}
           onTap={() => {
-            mutate((d) => addAdmin(d, email));
-            setEmail('');
+            setBusy(true);
+            setError(null);
+            void supabase()
+              .from('allowed_admins')
+              .insert({ email: email.trim().toLowerCase() } as never)
+              .then(async ({ error: e }) => {
+                setBusy(false);
+                if (e) setError(e.message);
+                else {
+                  setEmail('');
+                  await load();
+                }
+              });
           }}
         >
           Add
         </Btn>
+      </div>
+
+      <div className="hint" style={{ marginTop: 10 }}>
+        Removing someone stops them signing in from here on. It does not delete what they already
+        scored — that stays attributed to them.
       </div>
     </Sheet>
   );

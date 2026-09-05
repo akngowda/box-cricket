@@ -7,7 +7,8 @@
  */
 
 import { useState } from 'react';
-import { TabBar, TopBar } from '../../lib/ui';
+import { useSession } from '../../lib/session';
+import { TabBar, tapProps, TopBar } from '../../lib/ui';
 
 function BoxDiagram() {
   // Every net is drawn the same way — a double line, same weight all round —
@@ -219,6 +220,7 @@ const SECTIONS: Array<{ title: string; body: React.ReactNode }> = [
 ];
 
 export default function RulesPage() {
+  const session = useSession();
   const [open, setOpen] = useState<number | null>(0);
 
   return (
@@ -232,7 +234,7 @@ export default function RulesPage() {
         {SECTIONS.map((s, i) => (
           <div key={s.title} className="card" style={{ marginBottom: 9, padding: 0 }}>
             <button
-              onPointerDown={() => setOpen(open === i ? null : i)}
+              {...tapProps(() => setOpen(open === i ? null : i))}
               style={{
                 width: '100%',
                 background: 'none',
@@ -263,7 +265,7 @@ export default function RulesPage() {
         ))}
       </div>
       <div style={{ height: 24 }} />
-      <TabBar active="rules" />
+      <TabBar active="rules" signedIn={session.role === 'admin'} />
     </div>
   );
 }

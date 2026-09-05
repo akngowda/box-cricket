@@ -12,12 +12,14 @@ import { matchInnings, matchRules, scoreboard } from '../../../lib/innings';
 import { Rankings } from '../../../lib/rankings';
 import { seriesState } from '../../../lib/stats';
 import { squadCode, squadName, useDB, type DB } from '../../../lib/store';
+import { useSession } from '../../../lib/session';
 import { PrintButton, PrintHeader, TabBar, TopBar } from '../../../lib/ui';
 import type { MatchRow } from '../../../src/db/database.types';
 
 export default function SeriesView() {
   const params = useParams<{ seriesId: string }>();
   const db = useDB();
+  const session = useSession();
   const state = seriesState(db, params.seriesId);
 
   if (!state.series) {
@@ -71,7 +73,7 @@ export default function SeriesView() {
       </div>
 
       <div style={{ height: 24 }} />
-      <TabBar active="series" />
+      <TabBar active="series" signedIn={session.role === 'admin'} />
     </div>
   );
 }
