@@ -77,6 +77,11 @@ export interface RulesConfig {
   /** R16 / R17 — how many dots or body hits dismiss. Not user facing. */
   dotsToOut: number;
   bodyHitsToOut: number;
+  /**
+   * R20a — lets a single bowler go one over past the cap, for the weeks when
+   * a side turns up short of bowlers. Only one bowler may use it.
+   */
+  allowOneExtraOverBowler: boolean;
 }
 
 /** A partial config as stored at one settings level (R0). */

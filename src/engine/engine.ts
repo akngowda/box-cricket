@@ -140,12 +140,26 @@ export function ballsUntilEligible(
   return Math.max(0, rules.ballsPerOver - (state.legalBalls - b.lastBowledAtBall));
 }
 
+/**
+ * R20a — the cap, allowing for the extra-over setting: when it is on, one
+ * bowler (and only one) may go a single over beyond it.
+ */
+export function bowlerCapFor(state: InningsState, bowlerId: string, rules: RulesConfig): number {
+  if (!rules.allowOneExtraOverBowler) return rules.maxOversPerBowler;
+  const overCap = Object.values(state.bowlers).find(
+    (b) => b.oversCompleted > rules.maxOversPerBowler,
+  );
+  // Whoever took the extra over keeps it; nobody else may.
+  if (overCap) return overCap.id === bowlerId ? rules.maxOversPerBowler + 1 : rules.maxOversPerBowler;
+  return rules.maxOversPerBowler + 1;
+}
+
 /** R20a + R20b — who may bowl next: the rest gap, and the per-bowler cap. */
 export function eligibleBowlers(state: InningsState, rules: RulesConfig): string[] {
   return state.bowlingSquad.filter((id) => {
     if (ballsUntilEligible(state, id, rules) > 0) return false;
     const b = state.bowlers[id];
-    return (b?.oversCompleted ?? 0) < rules.maxOversPerBowler;
+    return (b?.oversCompleted ?? 0) < bowlerCapFor(state, id, rules);
   });
 }
 
@@ -238,7 +252,7 @@ export function applyEvent(
       if (!s.bowlingSquad.includes(event.bowlerId)) {
         throw new EngineError('Bowler is not in the bowling squad', 'R20d');
       }
-      if (b.oversCompleted >= rules.maxOversPerBowler) {
+      if (b.oversCompleted >= bowlerCapFor(s, event.bowlerId, rules)) {
         throw new EngineError('Bowler has used his over allowance', 'R20a');
       }
       const wait = ballsUntilEligible(s, event.bowlerId, rules);

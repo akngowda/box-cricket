@@ -588,6 +588,68 @@ export function startSecondInnings(db: DB, matchId: string, firstInningsRuns: nu
   };
 }
 
+/**
+ * Delete a match. If nothing was ever scored it goes completely; once there
+ * are balls it is marked abandoned instead, so the scorecards and the stats
+ * that reference it never break.
+ */
+export function deleteMatch(db: DB, matchId: string): DB {
+  const inningsIds = db.innings.filter((i) => i.match_id === matchId).map((i) => i.id);
+  const scored = db.deliveries.some((d) => inningsIds.includes(d.innings_id) && !d.is_voided);
+  const label = `match ${db.matches.find((m) => m.id === matchId)?.match_no ?? ''}`;
+
+  if (scored) {
+    return logActivity(
+      {
+        ...db,
+        matches: db.matches.map((m) => (m.id === matchId ? { ...m, status: 'abandoned' } : m)),
+      },
+      'match_abandoned',
+      `${label} (had scored balls, kept for the records)`,
+    );
+  }
+  return logActivity(
+    {
+      ...db,
+      matches: db.matches.filter((m) => m.id !== matchId),
+      innings: db.innings.filter((i) => i.match_id !== matchId),
+      deliveries: db.deliveries.filter((d) => !inningsIds.includes(d.innings_id)),
+      match_events: db.match_events.filter((e) => e.match_id !== matchId),
+    },
+    'match_deleted',
+    label,
+  );
+}
+
+/** Delete a series — soft once any match has been played (R35a). */
+export function deleteSeries(db: DB, seriesId: string): DB {
+  const matches = db.matches.filter((m) => m.series_id === seriesId);
+  const inningsIds = db.innings.filter((i) => matches.some((m) => m.id === i.match_id)).map((i) => i.id);
+  const scored = db.deliveries.some((d) => inningsIds.includes(d.innings_id) && !d.is_voided);
+  const name = db.series.find((s) => s.id === seriesId)?.name ?? '';
+
+  if (scored) {
+    return logActivity(
+      { ...db, series: db.series.map((s) => (s.id === seriesId ? { ...s, deleted_at: now() } : s)) },
+      'series_hidden',
+      `${name} (has results, kept so old scorecards still work)`,
+    );
+  }
+  return logActivity(
+    {
+      ...db,
+      series: db.series.filter((s) => s.id !== seriesId),
+      squads: db.squads.filter((q) => q.series_id !== seriesId),
+      squad_players: db.squad_players.filter((sp) => sp.series_id !== seriesId),
+      matches: db.matches.filter((m) => m.series_id !== seriesId),
+      innings: db.innings.filter((i) => !inningsIds.includes(i.id)),
+      match_events: db.match_events.filter((e) => matches.every((m) => m.id !== e.match_id)),
+    },
+    'series_deleted',
+    name,
+  );
+}
+
 export function completeMatch(db: DB, matchId: string, winnerSquadId: string | null, text: string): DB {
   return logActivity(
     {

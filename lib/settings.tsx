@@ -13,8 +13,18 @@ import { DEFAULT_RULES } from '../src/engine/rules';
 import type { DotCarryMode, RulesConfig, RulesConfigOverride } from '../src/engine/types';
 import { NumberPicker, SettingRow, tapProps, Toggle } from './ui';
 
+/**
+ * What this league actually plays, as opposed to the engine's own defaults.
+ * Every settings form starts here, so a new series is 10 overs unless someone
+ * says otherwise.
+ */
+export const LEAGUE_DEFAULTS: RulesConfig = {
+  ...DEFAULT_RULES,
+  oversPerInnings: 10,
+};
+
 export function fill(over: RulesConfigOverride): RulesConfig {
-  return { ...DEFAULT_RULES, ...over };
+  return { ...LEAGUE_DEFAULTS, ...over };
 }
 
 export function RulesEditor({
@@ -34,7 +44,7 @@ export function RulesEditor({
         <NumberPicker
           label="Overs per innings"
           value={value.oversPerInnings}
-          quick={[6, 8, 12]}
+          quick={[6, 8, 10, 12]}
           min={1}
           max={50}
           onChange={(n) => set('oversPerInnings', n)}
@@ -44,7 +54,6 @@ export function RulesEditor({
         <NumberPicker
           label="Balls per over"
           value={value.ballsPerOver}
-          quick={[4, 5, 6, 8]}
           min={1}
           max={12}
           onChange={(n) => set('ballsPerOver', n)}

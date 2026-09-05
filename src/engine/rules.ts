@@ -30,6 +30,7 @@ export const DEFAULT_RULES: RulesConfig = {
   audioPerOver: false,
   dotsToOut: 3,
   bodyHitsToOut: 3,
+  allowOneExtraOverBowler: false,
 };
 
 /**

@@ -160,7 +160,7 @@ export default function Admin() {
       {panel === 'settings' && <SettingsSheet onClose={() => setPanel('none')} />}
       {panel === 'series' && <NewSeriesSheet onClose={() => setPanel('none')} />}
 
-      <TabBar active="admin" />
+      <TabBar active="admin" signedIn />
     </div>
   );
 }

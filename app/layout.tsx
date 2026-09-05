@@ -33,8 +33,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${num.variable} ${ui.variable}`}>
-      <body>
+    // Extensions (recorders, password managers, translators) add attributes to
+    // <html> and <body> before React hydrates. That mismatch aborts hydration
+    // and leaves the page with no event handlers — buttons stop working. This
+    // tells React to ignore attribute differences on these two elements only.
+    <html lang="en" className={`${num.variable} ${ui.variable}`} suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <SyncPill />
         {children}
       </body>

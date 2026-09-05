@@ -6,13 +6,15 @@
  */
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { fill, RulesEditor } from '../../../../lib/settings';
 import {
   addPlayer,
   addToSquad,
   createMatch,
+  deleteMatch,
+  deleteSeries,
   extendSeries,
   generalSettings,
   recordCall,
@@ -33,6 +35,7 @@ import type { RulesConfig, RulesConfigOverride } from '../../../../src/engine/ty
 
 export default function SeriesPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const db = useDB();
   const mutate = useMutate();
   const [addTo, setAddTo] = useState<SquadRow | null>(null);
@@ -123,6 +126,10 @@ export default function SeriesPage() {
             db={db}
             match={m}
             onToss={() => setToss(m)}
+            onDelete={() => {
+              if (confirm(`Delete match ${m.match_no}? A match with scored balls is kept as abandoned.`))
+                mutate((d) => deleteMatch(d, m.id));
+            }}
             {...(m.status === 'completed' && !matches.some((x) => x.status !== 'completed')
               ? { onNext: () => setNewMatch(true) }
               : {})}
@@ -136,6 +143,19 @@ export default function SeriesPage() {
           onTap={() => setNewMatch(true)}
         >
           {sizeA < 2 || sizeB < 2 ? 'Both squads need at least 2 players' : 'Add a match'}
+        </Btn>
+
+        <Btn
+          className="btn danger"
+          style={{ marginTop: 14 }}
+          onTap={() => {
+            if (confirm(`Delete ${series.name}? A series with results is hidden rather than wiped.`)) {
+              mutate((d) => deleteSeries(d, series.id));
+              router.push('/admin');
+            }
+          }}
+        >
+          Delete this series
         </Btn>
 
         <div className="row" style={{ marginTop: 14, marginBottom: 24 }}>
@@ -164,11 +184,13 @@ function MatchRowCard({
   match,
   onToss,
   onNext,
+  onDelete,
 }: {
   db: DB;
   match: MatchRow;
   onToss: () => void;
   onNext?: () => void;
+  onDelete?: () => void;
 }) {
   const tossed = match.toss_decision !== null;
   return (
@@ -195,6 +217,11 @@ function MatchRowCard({
           <Link href={`/score/${match.id}`} style={{ flex: 1, textDecoration: 'none' }}>
             <button className="btn primary">{match.status === 'completed' ? 'Scorecard' : 'Score'}</button>
           </Link>
+        )}
+        {onDelete && (
+          <Btn className="btn danger" style={{ flex: 1 }} onTap={onDelete}>
+            Delete
+          </Btn>
         )}
         {match.status === 'completed' && onNext && (
           <Btn className="btn" style={{ flex: 1 }} onTap={onNext}>

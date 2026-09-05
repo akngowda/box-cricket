@@ -318,6 +318,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
 
         <div className="row" style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
           <span>
+            <span style={{ color: 'var(--muted)' }}>bowling </span>
             {playerName(db, state.currentBowlerId)}{' '}
             <span style={{ fontFamily: 'var(--font-num)', fontSize: 14, color: 'var(--chalk)' }}>
               {Math.floor((bowler?.legalBalls ?? 0) / rules.ballsPerOver)}.
@@ -410,9 +411,10 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             </button>
           </div>
 
-          {/* Extras, body, wicket and undo — under the runs, because the runs are
-              what gets tapped on nearly every ball. */}
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${rules.threeBodyOut ? 5 : 4},1fr)`, gap: 9 }}>
+          {/* Extras, body, wicket and undo — under the runs, because the runs
+              are what gets tapped on nearly every ball. The gap keeps a
+              mis-aimed thumb off the wicket button. */}
+          <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: `repeat(${rules.threeBodyOut ? 5 : 4},1fr)`, gap: 9 }}>
             <Opt on={wideSel} disabled={dis.wide} onTap={() => setSel((s) => (s.extra === 'wide' ? EMPTY : { ...EMPTY, extra: 'wide' }))}>
               Wide<small>{rules.wideRuns}</small>
             </Opt>
@@ -693,7 +695,7 @@ function FixBatsman({
 function Hist({ history }: { history: readonly string[] }) {
   return (
     <div className="hist">
-      {history.slice(-14).map((p, i) => (
+      {history.slice(-6).map((p, i) => (
         <i key={i} className={p === 'scored' ? 'g' : p === 'body' ? 'b' : 'd'} />
       ))}
     </div>
