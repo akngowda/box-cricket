@@ -41,6 +41,44 @@ export interface SyncStatus {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * What this device has already seen in the database.
+ *
+ * Without this, sync cannot tell "never uploaded" from "deleted by someone
+ * else", so it treats a remote deletion as a missing row and pushes it back —
+ * which made clearing the database impossible while the app was open. A row
+ * that WAS on the server and no longer is has been deleted, and goes here too.
+ */
+const KNOWN_KEY = 'box-cricket.synced';
+
+export type Known = Partial<Record<TableName, string[]>>;
+
+function loadKnown(): Known {
+  if (typeof window === 'undefined') return {};
+  try {
+    return JSON.parse(window.localStorage.getItem(KNOWN_KEY) ?? '{}') as Known;
+  } catch {
+    return {};
+  }
+}
+
+function saveKnown(known: Known): void {
+  try {
+    window.localStorage.setItem(KNOWN_KEY, JSON.stringify(known));
+  } catch {
+    /* not worth failing a sync over */
+  }
+}
+
+/** Forget everything; used when the device is cleared. */
+export function forgetSyncHistory(): void {
+  try {
+    window.localStorage.removeItem(KNOWN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
  * The local store stamps created_by with an email, because offline there is no
  * user id to hand. The database wants a profiles UUID, so anything that is not
  * one is dropped rather than sent and rejected.
@@ -65,12 +103,30 @@ export function pendingCount(local: DB, remote: Partial<Record<TableName, unknow
   return n;
 }
 
+/**
+ * Turn a database error into something a scorer can act on. Nobody standing on
+ * a turf box needs a table name or a Postgres code — they need to know whether
+ * to sign in, wait, or call someone.
+ */
+function readable(message: string): string {
+  if (/row-level security|permission denied|jwt|not authenticated/i.test(message)) {
+    return 'You are not signed in, so nothing can be saved to the scorebook yet.';
+  }
+  if (/duplicate key|already exists/i.test(message)) {
+    return 'Some of this was already saved. Nothing is lost.';
+  }
+  if (/network|fetch|timeout|failed to fetch/i.test(message)) {
+    return 'Cannot reach the scorebook right now. Still trying.';
+  }
+  return 'The scorebook refused the last save. Still trying.';
+}
+
 async function pull(): Promise<Partial<Record<TableName, unknown[]>>> {
   const client = supabase();
   const out: Partial<Record<TableName, unknown[]>> = {};
   for (const t of TABLES) {
     const { data, error } = await client.from(t).select('*');
-    if (error) throw new Error(`${t}: ${error.message}`);
+    if (error) throw new Error(readable(error.message));
     out[t] = data ?? [];
   }
   return out;
@@ -121,7 +177,7 @@ async function push(
       if (fresh.length > 0) {
         const { error } = await client.from(t).insert(fresh as never);
         if (error) {
-          problems.push(`${t}: ${error.message}`);
+          problems.push(readable(error.message));
           failed.add(t);
         }
       }
@@ -136,7 +192,7 @@ async function push(
           .update({ is_voided: true } as never)
           .eq('id', row.id as string);
         if (error) {
-          problems.push(`${t}: ${error.message}`);
+          problems.push(readable(error.message));
           failed.add(t);
         }
       }
@@ -147,7 +203,7 @@ async function push(
       onConflict: 'id',
     });
     if (error) {
-      problems.push(`${t}: ${error.message}`);
+      problems.push(readable(error.message));
       failed.add(t);
     }
   }
@@ -166,24 +222,36 @@ export function mergeTables(
   local: DB,
   server: Partial<Record<TableName, unknown[]>>,
   failed: Set<TableName>,
-): DB {
+  known: Known = {},
+): { db: DB; known: Known } {
   const merged: DB = { ...local };
+  const nextKnown: Known = { ...known };
+
   for (const t of TABLES) {
     const serverRows = (server[t] ?? []) as Array<{ id: string }>;
     const localRows = (local[t] ?? []) as unknown as Array<{ id: string }>;
+    const serverIds = new Set(serverRows.map((r) => r.id));
+    const seenBefore = new Set(known[t] ?? []);
+
+    // Anything this device knew was stored, and is now gone from the server,
+    // was deleted there. Drop it rather than helpfully putting it back.
+    const deletedRemotely = (id: string): boolean => seenBefore.has(id) && !serverIds.has(id);
 
     if (failed.has(t)) {
-      const localIds = new Set(localRows.map((r) => r.id));
+      const kept = localRows.filter((r) => !deletedRemotely(r.id));
+      const localIds = new Set(kept.map((r) => r.id));
       const serverOnly = serverRows.filter((r) => !localIds.has(r.id));
-      (merged as unknown as Record<string, unknown[]>)[t] = [...localRows, ...serverOnly];
+      (merged as unknown as Record<string, unknown[]>)[t] = [...kept, ...serverOnly];
+      // A refused push tells us nothing new about what the server holds.
+      nextKnown[t] = [...serverIds];
       continue;
     }
 
-    const serverIds = new Set(serverRows.map((r) => r.id));
-    const localOnly = localRows.filter((r) => !serverIds.has(r.id));
+    const localOnly = localRows.filter((r) => !serverIds.has(r.id) && !deletedRemotely(r.id));
     (merged as unknown as Record<string, unknown[]>)[t] = [...serverRows, ...localOnly];
+    nextKnown[t] = [...serverIds];
   }
-  return merged;
+  return { db: merged, known: nextKnown };
 }
 
 /**
@@ -199,12 +267,16 @@ export async function syncNow(): Promise<SyncStatus> {
 
   try {
     const local = snapshot();
-    // Look first, so deliveries already stored are not sent again.
+    const known = loadKnown();
+    // Look first, so deliveries already stored are not sent again — and so a
+    // row deleted in the database is recognised before anything is pushed.
     const before = await pull();
-    const { problems, failed } = await push(local, before);
+    const trimmed = mergeTables(local, before, new Set(TABLES), known).db;
+    const { problems, failed } = await push(trimmed, before);
     const after = await pull();
-    const merged = mergeTables(local, after, failed);
+    const { db: merged, known: nextKnown } = mergeTables(trimmed, after, failed, known);
     replaceAll(merged);
+    saveKnown(nextKnown);
 
     const pending = pendingCount(merged, after);
     return problems.length > 0

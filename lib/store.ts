@@ -178,6 +178,12 @@ export function snapshot(): DB {
 export function resetAll(): void {
   cache = { ...EMPTY };
   write(cache);
+  try {
+    // Otherwise the next sync would treat the freshly pulled rows as deletions.
+    window.localStorage.removeItem('box-cricket.synced');
+  } catch {
+    /* ignore */
+  }
 }
 
 /** A pool and two jerseys, so the app is usable the moment it opens. */

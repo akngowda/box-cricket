@@ -424,9 +424,8 @@ function SignIn({ email }: { email: string | null }) {
         <TopBar title="Admin" back="/" />
         <div className="pad">
           <div className="note" style={{ borderColor: 'var(--strike)' }}>
-            <b>This build has no database connection.</b> Admin needs one to check who you are,
-            so it stays closed. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY,
-            then redeploy.
+            <b>Sign in is unavailable here.</b> This copy of the app cannot reach the scorebook,
+            so there is no way to check who you are. Everything public still works.
           </div>
         </div>
         <TabBar active="admin" />

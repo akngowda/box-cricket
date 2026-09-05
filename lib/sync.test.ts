@@ -36,12 +36,16 @@ describe('sync merge', () => {
 
     // Push succeeded, so the server is now authoritative — but a successful
     // push means it already holds the local version of i1.
-    const merged = mergeTables(local, { innings: [innings('i1', 'complete', 1), innings('i2', 'in_progress', 2)] }, new Set());
+    const merged = mergeTables(
+      local,
+      { innings: [innings('i1', 'complete', 1), innings('i2', 'in_progress', 2)] },
+      new Set(),
+    ).db;
     expect(merged.innings.find((i) => i.id === 'i1')?.status).toBe('complete');
     expect(merged.innings).toHaveLength(2);
 
     // And when the push was refused, local wins outright rather than losing it.
-    const refused = mergeTables(local, server, new Set(['innings']));
+    const refused = mergeTables(local, server, new Set(['innings'])).db;
     expect(refused.innings.find((i) => i.id === 'i1')?.status).toBe('complete');
     expect(refused.innings.find((i) => i.id === 'i2')).toBeDefined();
   });
@@ -50,15 +54,15 @@ describe('sync merge', () => {
     const local: DB = { ...EMPTY, innings: [innings('i1', 'complete', 1)] };
     const server = { innings: [innings('i1', 'complete', 1), innings('i9', 'in_progress', 2)] };
 
-    expect(mergeTables(local, server, new Set()).innings).toHaveLength(2);
+    expect(mergeTables(local, server, new Set()).db.innings).toHaveLength(2);
     // Even for a refused table: another device's work is never dropped.
-    expect(mergeTables(local, server, new Set(['innings'])).innings).toHaveLength(2);
+    expect(mergeTables(local, server, new Set(['innings'])).db.innings).toHaveLength(2);
   });
 
   it('a ball scored offline survives a refused push', () => {
     const ball = { id: 'd1', innings_id: 'i1', seq: 1 } as unknown as DB['deliveries'][number];
     const local: DB = { ...EMPTY, deliveries: [ball] };
-    const merged = mergeTables(local, { deliveries: [] }, new Set(['deliveries']));
+    const merged = mergeTables(local, { deliveries: [] }, new Set(['deliveries'])).db;
     expect(merged.deliveries).toHaveLength(1);
   });
 });
@@ -84,5 +88,28 @@ describe('push strategy', () => {
       (r) => r.is_voided && stored.find((s) => s.id === r.id)?.is_voided === false,
     );
     expect(toVoid.map((r) => r.id)).toEqual(['d1']);
+  });
+});
+
+describe('deletions made in the database', () => {
+  it('a row this device knew about, now gone from the server, is dropped — not pushed back', () => {
+    // This is what made clearing the scorebook impossible: the open app kept
+    // helpfully restoring everything it had.
+    const local: DB = {
+      ...EMPTY,
+      series: [{ id: 's1' }, { id: 's2' }] as unknown as DB['series'],
+    };
+    const known = { series: ['s1', 's2'] };
+
+    const after = mergeTables(local, { series: [] }, new Set(), known);
+    expect(after.db.series).toHaveLength(0);
+    expect(after.known.series).toEqual([]);
+  });
+
+  it('a row never yet uploaded still survives an empty server', () => {
+    const local: DB = { ...EMPTY, series: [{ id: 'fresh' }] as unknown as DB['series'] };
+    // Nothing known: this has simply never been pushed.
+    const after = mergeTables(local, { series: [] }, new Set(), {});
+    expect(after.db.series).toHaveLength(1);
   });
 });

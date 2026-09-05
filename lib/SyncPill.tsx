@@ -55,12 +55,12 @@ export function SyncPill() {
     status.state === 'error' ? 'red' : status.pending > 0 || status.state === 'offline' ? 'amber' : 'green';
 
   const why = !session.role
-    ? 'Nobody is signed in on this device, so the database is refusing to store anything. Sign in from Login and it will go up by itself.'
+    ? 'Nobody is signed in on this device, so nothing can be saved to the scorebook. Sign in from Login and it goes up by itself.'
     : status.state === 'error'
-      ? status.message ?? 'The database refused the last write.'
+      ? (status.message ?? 'The last save was refused. Still trying.')
       : status.pending > 0
-        ? 'These are on this device and on their way up. They are not lost.'
-        : 'Everything on this device is in the database.';
+        ? 'Saved on this phone and on their way up. Nothing is lost.'
+        : 'Everything on this phone is saved.';
 
   return (
     <div
@@ -80,7 +80,7 @@ export function SyncPill() {
           className="note"
           style={{ position: 'absolute', top: 26, right: 0, width: 250, background: 'var(--turf)' }}
         >
-          <b>{status.pending} not in the database yet</b>
+          <b>{status.pending} not saved yet</b>
           <div style={{ marginTop: 6 }}>{why}</div>
           <button
             className="btn ghost"
