@@ -98,7 +98,10 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const mutate = useMutate();
   const rules = matchRules(db, match);
   const innings = matchInnings(db, match.id);
-  const current = innings.find((i) => i.status === 'in_progress') ?? innings[innings.length - 1];
+  // The latest in-progress innings, not the first: once the chase starts the
+  // pad must follow it even if the first innings row is briefly stale.
+  const current =
+    [...innings].reverse().find((i) => i.status === 'in_progress') ?? innings[innings.length - 1];
 
   const [sel, setSel] = useState<Selection>(EMPTY);
   const [sheet, setSheet] = useState<SheetName>('none');

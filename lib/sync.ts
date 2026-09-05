@@ -76,29 +76,71 @@ async function pull(): Promise<Partial<Record<TableName, unknown[]>>> {
   return out;
 }
 
+export interface PushResult {
+  problems: string[];
+  /** Tables the server would not accept, so local must stay authoritative. */
+  failed: Set<TableName>;
+}
+
 /**
- * Push whatever the server has not seen. Rejections are expected and fine —
- * a viewer has no write rights — so they are reported, never thrown away
- * silently and never allowed to lose the local row.
+ * Push every local row, not just the new ones.
+ *
+ * Pushing only unseen ids was a real bug: marking the first innings complete
+ * changes an existing row, so the server never heard about it, and the next
+ * pull handed back the stale copy and undid the change on screen. Upsert is
+ * keyed by the client-generated id, so sending everything is safe and makes
+ * the server match this device.
  */
-async function push(
-  local: DB,
-  remote: Partial<Record<TableName, unknown[]>>,
-): Promise<string[]> {
+async function push(local: DB): Promise<PushResult> {
   const client = supabase();
   const problems: string[] = [];
+  const failed = new Set<TableName>();
 
   for (const t of TABLES) {
-    const remoteIds = new Set(((remote[t] ?? []) as Array<{ id: string }>).map((r) => r.id));
     const rows = ((local[t] ?? []) as unknown as Array<Record<string, unknown>>)
-      .filter((r) => typeof r.id === 'string' && !remoteIds.has(r.id as string))
+      .filter((r) => typeof r.id === 'string')
       .map(sanitise);
     if (rows.length === 0) continue;
 
     const { error } = await client.from(t).upsert(rows as never, { onConflict: 'id' });
-    if (error) problems.push(`${t}: ${error.message}`);
+    if (error) {
+      problems.push(`${t}: ${error.message}`);
+      failed.add(t);
+    }
   }
-  return problems;
+  return { problems, failed };
+}
+
+/**
+ * Combine the two sides.
+ *
+ * Where the push succeeded the server is authoritative and any local-only row
+ * is kept so it can go again. Where the push was refused — a viewer with no
+ * write rights, or an expired session — the local rows win outright, because
+ * otherwise the pull would silently roll back work the scorer can see.
+ */
+export function mergeTables(
+  local: DB,
+  server: Partial<Record<TableName, unknown[]>>,
+  failed: Set<TableName>,
+): DB {
+  const merged: DB = { ...local };
+  for (const t of TABLES) {
+    const serverRows = (server[t] ?? []) as Array<{ id: string }>;
+    const localRows = (local[t] ?? []) as unknown as Array<{ id: string }>;
+
+    if (failed.has(t)) {
+      const localIds = new Set(localRows.map((r) => r.id));
+      const serverOnly = serverRows.filter((r) => !localIds.has(r.id));
+      (merged as unknown as Record<string, unknown[]>)[t] = [...localRows, ...serverOnly];
+      continue;
+    }
+
+    const serverIds = new Set(serverRows.map((r) => r.id));
+    const localOnly = localRows.filter((r) => !serverIds.has(r.id));
+    (merged as unknown as Record<string, unknown[]>)[t] = [...serverRows, ...localOnly];
+  }
+  return merged;
 }
 
 /**
@@ -114,21 +156,9 @@ export async function syncNow(): Promise<SyncStatus> {
 
   try {
     const local = snapshot();
-    const before = await pull();
-    const problems = await push(local, before);
+    const { problems, failed } = await push(local);
     const after = await pull();
-
-    // Server rows win where both exist; local-only rows survive so a refused
-    // or not-yet-pushed ball is never dropped on the floor.
-    const merged: DB = { ...local };
-    for (const t of TABLES) {
-      const serverRows = (after[t] ?? []) as Array<{ id: string }>;
-      const serverIds = new Set(serverRows.map((r) => r.id));
-      const localOnly = ((local[t] ?? []) as Array<{ id: string }>).filter(
-        (r) => !serverIds.has(r.id),
-      );
-      (merged as unknown as Record<string, unknown[]>)[t] = [...serverRows, ...localOnly];
-    }
+    const merged = mergeTables(local, after, failed);
     replaceAll(merged);
 
     const pending = pendingCount(merged, after);
