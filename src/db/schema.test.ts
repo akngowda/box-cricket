@@ -78,14 +78,14 @@ beforeAll(async () => {
   await db.exec(sql('supabase/tests/00_auth_stub.sql'));
   await db.exec(sql('supabase/migrations/0001_init.sql'));
   await db.exec(sql('supabase/migrations/0002_rls.sql'));
+  await db.exec(sql('supabase/migrations/0003_admins_and_audit.sql'));
 
   // Users: the profiles rows appear via the on_auth_user_created trigger.
   await db.exec(`
     insert into auth.users (id, email) values
-      ('${ID.admin}', 'admin@example.com'),
+      ('${ID.admin}', 'akarsha.kng@gmail.com'),
       ('${ID.scorer}', 'scorer@example.com'),
       ('${ID.otherScorer}', 'other@example.com');
-    update public.profiles set role = 'admin' where id = '${ID.admin}';
 
     insert into public.players (id, name) values
       ('${ID.p1}', 'Rahul'), ('${ID.p2}', 'Kiran'), ('${ID.p3}', 'Arjun');
@@ -283,5 +283,64 @@ describe('0002 — RLS', () => {
       await expectRejected('scorer', `insert into public.series (name) values ('Scorer series')`),
     ).toMatch(/row-level security/i);
     await as('admin', `insert into public.series (name) values ('Admin series')`);
+  });
+});
+
+describe('0003 — admins and the activity log', () => {
+  it('the super admin is an admin from his first sign-in, with no bootstrap step', async () => {
+    const rows = (await as('owner', `select role from public.profiles where id = '${ID.admin}'`)) as Array<{
+      role: string;
+    }>;
+    expect(rows[0]?.role).toBe('admin');
+  });
+
+  it('only the super admin can grant admin, and he cannot be demoted', async () => {
+    // RLS filters the row rather than raising, so the proof is that a scorer
+    // promoting himself changes nothing at all.
+    await as('scorer', `update public.profiles set role = 'admin' where id = '${ID.scorer}'`);
+    const unchanged = (await as(
+      'owner',
+      `select role from public.profiles where id = '${ID.scorer}'`,
+    )) as Array<{ role: string }>;
+    expect(unchanged[0]?.role).toBe('scorer');
+
+    // The super admin promoting someone else works.
+    await as('admin', `update public.profiles set role = 'admin' where id = '${ID.otherScorer}'`);
+    const promoted = (await as(
+      'owner',
+      `select role from public.profiles where id = '${ID.otherScorer}'`,
+    )) as Array<{ role: string }>;
+    expect(promoted[0]?.role).toBe('admin');
+
+    // But nobody can demote him, not even himself.
+    const demote = await expectRejected(
+      'admin',
+      `update public.profiles set role = 'scorer' where id = '${ID.admin}'`,
+    );
+    expect(demote).toMatch(/super admin cannot be demoted/);
+  });
+
+  it('the activity log stamps the actor itself and cannot be rewritten', async () => {
+    await as('scorer', `insert into public.audit_log (action, detail) values ('player_added', 'Walk-up')`);
+    const rows = (await as('owner', `select actor_email, action from public.audit_log`)) as Array<{
+      actor_email: string;
+      action: string;
+    }>;
+    // The client never says who it is — the trigger does.
+    expect(rows[0]?.actor_email).toBe('scorer@example.com');
+
+    const tamper = await expectRejected(
+      'scorer',
+      `update public.audit_log set detail = 'nothing to see'`,
+    );
+    expect(tamper).toMatch(/permission denied/i);
+
+    const wipe = await expectRejected('admin', `delete from public.audit_log`);
+    expect(wipe).toMatch(/permission denied/i);
+  });
+
+  it('R35 — the activity log is not public', async () => {
+    const msg = await expectRejected('anon', `select * from public.audit_log`);
+    expect(msg).toMatch(/permission denied/i);
   });
 });

@@ -39,7 +39,15 @@
       "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Box Cricket: engine, schema, admin, scoring pad, viewer, stats, PDF reports *)",
       "Bash(grep -vE '\\\\.test\\\\.ts$|^supabase/|\\\\.md$|prototype\\\\.html|^\\\\.github/')",
       "Bash(git branch *)",
-      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Add README, CI workflows, health route and PDF reports *)"
+      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Add README, CI workflows, health route and PDF reports *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(git push *)",
+      "Bash(git ls-tree *)",
+      "Bash(git check-ignore *)",
+      "Bash(curl -s -o /dev/null -w 'auth health: %{http_code}\\\\n' https://nrbgiktxylhefvehxpdb.supabase.co/auth/v1/health?apikey=sb_publishable_-TjMl4zW8yUmx-YEvx9V6Q_6vataaNh)",
+      "Bash(curl -s -w '\\\\nrest: %{http_code}\\\\n' -H 'apikey: sb_publishable_-TjMl4zW8yUmx-YEvx9V6Q_6vataaNh' 'https://nrbgiktxylhefvehxpdb.supabase.co/rest/v1/players?select=id&limit=1')",
+      "Bash(curl -s -H 'apikey: __TRACKED_VAR__' __TRACKED_VAR__/rest/v1/audit_log?select=*)",
+      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Wire Supabase: client, real auth, local-first sync, realtime, admin migration *)"
     ]
   }
 }

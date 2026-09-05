@@ -11,3 +11,8 @@ next-env.d.ts
 02-ARCHITECTURE.md
 03-BUILD-PROMPT.md
 prototype.html
+
+# Secrets and local environment
+.env
+.env.local
+.env*.local

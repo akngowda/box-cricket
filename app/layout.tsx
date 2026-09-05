@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Barlow_Condensed, IBM_Plex_Sans } from 'next/font/google';
+import { SyncPill } from '../lib/SyncPill';
 import './globals.css';
 
 // The prototype's two faces: condensed for numbers, Plex for everything else.
@@ -33,7 +34,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${num.variable} ${ui.variable}`}>
-      <body>{children}</body>
+      <body>
+        <SyncPill />
+        {children}
+      </body>
     </html>
   );
 }

@@ -10,15 +10,9 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import {
-  isAdmin,
-  isSuperAdmin,
-  normalise,
-  signOut,
-  SUPER_ADMIN,
-  useCurrentEmail,
-  useSignIn,
-} from '../../lib/auth';
+import { isAdmin, isSuperAdmin, normalise, SUPER_ADMIN } from '../../lib/auth';
+import { useSession, useSignInWithPassword, useSignOut } from '../../lib/session';
+import { isRemote } from '../../lib/supabase';
 import { fill, RulesEditor } from '../../lib/settings';
 import {
   activity,
@@ -42,14 +36,28 @@ type Panel = 'none' | 'pool' | 'settings' | 'series' | 'jersey' | 'admins' | 'ac
 
 export default function Admin() {
   const db = useDB();
-  const email = useCurrentEmail();
+  const session = useSession();
+  const signOut = useSignOut();
   const [panel, setPanel] = useState<Panel>('none');
+  const email = session.email;
 
   const activePlayers = db.players.filter((p) => p.deleted_at === null);
 
-  // Everything behind this screen changes matches and stats, so it needs a
-  // name against it. Signing in is what makes the activity log meaningful.
-  if (!isAdmin(email, db.admins)) return <SignIn email={email} knownAdmins={db.admins} />;
+  // With Supabase wired the role comes from the database; without it, from the
+  // local admin list. Either way nothing behind this screen is anonymous.
+  const admin = isRemote ? session.role === 'admin' : isAdmin(email, db.admins);
+
+  if (session.loading) {
+    return (
+      <div className="app">
+        <TopBar title="Admin" back="/" />
+        <div className="pad">
+          <div className="sub">Checking your session…</div>
+        </div>
+      </div>
+    );
+  }
+  if (!admin) return <SignIn email={email} knownAdmins={db.admins} />;
 
   return (
     <div className="app">
@@ -62,7 +70,11 @@ export default function Admin() {
       <div className="pad">
         <div className="row" style={{ marginBottom: 12 }}>
           <span className="sub">Signed in as {email}</span>
-          <Btn className="btn ghost" style={{ width: 90, padding: '7px 4px', fontSize: 12 }} onTap={signOut}>
+          <Btn
+            className="btn ghost"
+            style={{ width: 90, padding: '7px 4px', fontSize: 12 }}
+            onTap={() => void signOut()}
+          >
             Sign out
           </Btn>
         </div>
@@ -332,14 +344,20 @@ function NewSeriesSheet({ onClose }: { onClose: () => void }) {
 }
 
 /**
- * No password yet — this records who you are so every change is attributable.
- * When Supabase Auth lands, this screen becomes the real login and the rest of
- * the app does not change.
+ * Real sign-in when Supabase is configured: a password, a session, and a role
+ * read from the database. First time for an email creates the account.
  */
 function SignIn({ email, knownAdmins }: { email: string | null; knownAdmins: string[] }) {
-  const signIn = useSignIn();
+  const signIn = useSignInWithPassword();
+  const signOut = useSignOut();
   const [value, setValue] = useState(email ?? '');
-  const known = normalise(value) === SUPER_ADMIN || knownAdmins.map(normalise).includes(normalise(value));
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const localKnown =
+    normalise(value) === SUPER_ADMIN || knownAdmins.map(normalise).includes(normalise(value));
+  const ready = isRemote ? /.+@.+\..+/.test(value) && password.length >= 6 : localKnown;
 
   return (
     <div className="app">
@@ -347,7 +365,7 @@ function SignIn({ email, knownAdmins }: { email: string | null; knownAdmins: str
       <div className="pad">
         <div className="note" style={{ marginBottom: 14 }}>
           Admin can set up series, build squads, run the toss and score. Every change is stamped
-          with the email you use here and shows up in <b>Activity</b>.
+          with your email and shows up in <b>Activity</b>.
         </div>
 
         <div className="lbl">Your email</div>
@@ -355,27 +373,58 @@ function SignIn({ email, knownAdmins }: { email: string | null; knownAdmins: str
           className="field"
           placeholder="you@example.com"
           inputMode="email"
+          autoComplete="email"
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
 
-        {value.length > 0 && !known && (
+        {isRemote && (
+          <>
+            <div className="lbl">Password</div>
+            <input
+              className="field"
+              type="password"
+              placeholder="at least 6 characters"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <div className="hint" style={{ marginTop: 8 }}>
+              First time with this email? Signing in creates the account.
+            </div>
+          </>
+        )}
+
+        {!isRemote && value.length > 0 && !localKnown && (
           <div className="note" style={{ marginTop: 10, borderColor: 'var(--strike)' }}>
             That email has no admin access. Ask {SUPER_ADMIN} to add it.
+          </div>
+        )}
+
+        {message && (
+          <div className="note" style={{ marginTop: 10, borderColor: 'var(--sodium-dim)' }}>
+            {message}
           </div>
         )}
 
         <Btn
           className="btn primary"
           style={{ marginTop: 14 }}
-          disabled={!known}
-          onTap={() => signIn(value)}
+          disabled={!ready || busy}
+          onTap={() => {
+            setBusy(true);
+            setMessage(null);
+            void signIn(value, password).then((r) => {
+              setBusy(false);
+              if (!r.ok) setMessage(r.message ?? 'Could not sign in.');
+            });
+          }}
         >
-          Continue
+          {busy ? 'Signing in…' : 'Continue'}
         </Btn>
 
         {email && (
-          <Btn className="btn ghost" style={{ marginTop: 9 }} onTap={signOut}>
+          <Btn className="btn ghost" style={{ marginTop: 9 }} onTap={() => void signOut()}>
             Sign out of {email}
           </Btn>
         )}

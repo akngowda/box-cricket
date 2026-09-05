@@ -157,6 +157,16 @@ export function useMutate(): (fn: (db: DB) => DB) => void {
   return useCallback((fn) => write(fn(structuredClone(read()))), []);
 }
 
+/** Replace the whole local mirror — used by the sync layer after a pull. */
+export function replaceAll(next: DB): void {
+  write(next);
+}
+
+/** The current local state, readable outside React. */
+export function snapshot(): DB {
+  return read();
+}
+
 export function resetAll(): void {
   cache = seed();
   write(cache);
