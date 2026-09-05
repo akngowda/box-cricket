@@ -21,6 +21,7 @@ import {
   renameJersey,
   renameSeries,
   setSeriesIsTest,
+  setSquadJersey,
   generalSettings,
   recordCall,
   recordDecision,
@@ -73,12 +74,25 @@ export default function SeriesPage() {
           return (
             <div key={q.id} className="card" style={{ marginBottom: 9 }}>
               <div className="row">
-                <div className="tcode" {...tapProps(() => {
-                  const jersey = db.jerseys.find((j) => j.id === q.jersey_id);
-                  if (!jersey) return;
-                  const next = prompt('Team name', jersey.name);
-                  if (next && next.trim()) mutate((d) => renameJersey(d, jersey.id, next));
-                })}>
+                <div
+                  className="tcode"
+                  {...tapProps(() => {
+                    const jersey = db.jerseys.find((j) => j.id === q.jersey_id);
+                    if (jersey) {
+                      const next = prompt('Team name', jersey.name);
+                      if (next && next.trim()) mutate((d) => renameJersey(d, jersey.id, next));
+                      return;
+                    }
+                    // No team on this squad: name one now and attach it.
+                    const teamName = prompt('This side has no team. Name it');
+                    if (!teamName || !teamName.trim()) return;
+                    mutate((d) => {
+                      const withTeam = addJersey(d, teamName, '#ffb627');
+                      const created = withTeam.jerseys[withTeam.jerseys.length - 1];
+                      return created ? setSquadJersey(withTeam, q.id, created.id) : withTeam;
+                    });
+                  })}
+                >
                   {squadName(db, q.id)}
                 </div>
                 <span className="chip">{members.length} players</span>

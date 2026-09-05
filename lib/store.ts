@@ -391,6 +391,15 @@ export function removeFromSquad(db: DB, squadId: string, playerId: string): DB {
   );
 }
 
+/** Repair or change which team a squad wears. */
+export function setSquadJersey(db: DB, squadId: string, jerseyId: string): DB {
+  return logActivity(
+    { ...db, squads: db.squads.map((q) => (q.id === squadId ? { ...q, jersey_id: jerseyId } : q)) },
+    'squad_team_set',
+    db.jerseys.find((j) => j.id === jerseyId)?.name ?? jerseyId,
+  );
+}
+
 export function squadMembers(db: DB, squadId: string): PlayerRow[] {
   const ids = db.squad_players
     .filter((sp) => sp.squad_id === squadId && sp.removed_at === null)
@@ -404,7 +413,8 @@ export function squadName(db: DB, squadId: string | null): string {
   const squad = db.squads.find((s) => s.id === squadId);
   if (!squad) return '—';
   if (squad.name_override) return squad.name_override;
-  return db.jerseys.find((j) => j.id === squad.jersey_id)?.name ?? '—';
+  // A squad whose team is missing says so, rather than showing a bare dash.
+  return db.jerseys.find((j) => j.id === squad.jersey_id)?.name ?? 'No team set';
 }
 
 export function squadCode(db: DB, squadId: string | null): string {

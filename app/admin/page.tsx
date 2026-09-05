@@ -318,17 +318,42 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** R1 — pick two existing jerseys or make new ones; squads are filled next. */
+/**
+ * R1 — the week's two teams.
+ *
+ * Each side picks an existing team or names a new one, and a new name is
+ * assigned to that side immediately. The old form had one shared "create"
+ * button and two dropdowns that defaulted to nothing when no teams existed
+ * yet, so a series could be saved with a squad that pointed at no team at all
+ * — which is how a side ended up showing a dash for its name.
+ */
 function NewSeriesSheet({ onClose }: { onClose: () => void }) {
   const db = useDB();
   const mutate = useMutate();
+  const teams = db.jerseys.filter((j) => j.deleted_at === null);
   const [name, setName] = useState('');
   const [planned, setPlanned] = useState(3);
-  const [a, setA] = useState(db.jerseys[0]?.id ?? '');
-  const [b, setB] = useState(db.jerseys[1]?.id ?? '');
-  const [newJersey, setNewJersey] = useState('');
+  const [a, setA] = useState('');
+  const [b, setB] = useState('');
   const [isTest, setIsTest] = useState(false);
   const [rules, setRules] = useState<RulesConfig>(fill(generalSettings(db)));
+
+  /** Name a new team and put it straight into that side. */
+  const createInto = (side: 'a' | 'b'): void => {
+    const teamName = prompt(side === 'a' ? 'Name for the first team' : 'Name for the second team');
+    if (!teamName || !teamName.trim()) return;
+    mutate((d) => {
+      const next = addJersey(d, teamName, '#ffb627');
+      const created = next.jerseys[next.jerseys.length - 1];
+      if (created) (side === 'a' ? setA : setB)(created.id);
+      return next;
+    });
+  };
+
+  const chosen = (id: string): string => teams.find((j) => j.id === id)?.name ?? '';
+  // Both sides must be real, existing, different teams.
+  const ready =
+    name.trim().length > 0 && a !== '' && b !== '' && a !== b && chosen(a) !== '' && chosen(b) !== '';
 
   return (
     <Sheet title="Start a series" onClose={onClose}>
@@ -346,48 +371,38 @@ function NewSeriesSheet({ onClose }: { onClose: () => void }) {
         onChange={setPlanned}
       />
 
-      <div className="lbl">The two jerseys this week</div>
-      <div className="grid2">
-        {[
-          [a, setA] as const,
-          [b, setB] as const,
-        ].map(([value, setValue], i) => (
+      <div className="lbl">The two teams this week</div>
+      {(
+        [
+          ['a', a, setA] as const,
+          ['b', b, setB] as const,
+        ]
+      ).map(([side, value, setValue]) => (
+        <div key={side} className="row" style={{ marginBottom: 8 }}>
           <select
-            key={i}
             className="field"
             value={value}
             onChange={(e) => setValue(e.target.value)}
+            style={{ flex: 1 }}
           >
-            {db.jerseys
-              .filter((j) => j.deleted_at === null)
-              .map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.name}
-                </option>
-              ))}
+            <option value="">{side === 'a' ? 'First team…' : 'Second team…'}</option>
+            {teams.map((j) => (
+              <option key={j.id} value={j.id}>
+                {j.name}
+              </option>
+            ))}
           </select>
-        ))}
-      </div>
+          <Btn className="btn" style={{ width: 96 }} onTap={() => createInto(side)}>
+            New team
+          </Btn>
+        </div>
+      ))}
 
-      <div className="row" style={{ marginTop: 9 }}>
-        <input
-          className="field"
-          placeholder="or create a new team name"
-          value={newJersey}
-          onChange={(e) => setNewJersey(e.target.value)}
-        />
-        <Btn
-          className="btn"
-          style={{ width: 92 }}
-          disabled={newJersey.trim().length === 0}
-          onTap={() => {
-            mutate((d) => addJersey(d, newJersey, '#ffb627'));
-            setNewJersey('');
-          }}
-        >
-          Create
-        </Btn>
-      </div>
+      {a !== '' && a === b && (
+        <div className="note" style={{ borderColor: 'var(--strike)' }}>
+          Pick two different teams.
+        </div>
+      )}
 
       <div className="card" style={{ padding: '11px 13px', marginTop: 16 }}>
         <div className="row">
@@ -395,8 +410,8 @@ function NewSeriesSheet({ onClose }: { onClose: () => void }) {
             Test series
             <div className="sub" style={{ fontSize: 10.5, marginTop: 2 }}>
               For trying things out. A test series — and every match and ball in it — can be
-              deleted outright later. Leave this off for a real weekend: those can never be
-              deleted.
+              deleted outright later, and nobody but you can see it. Leave this off for a real
+              weekend: those can never be deleted.
             </div>
           </div>
           <Toggle on={isTest} onTap={() => setIsTest(!isTest)} />
@@ -411,13 +426,13 @@ function NewSeriesSheet({ onClose }: { onClose: () => void }) {
       <Btn
         className="btn primary"
         style={{ marginTop: 12 }}
-        disabled={name.trim().length === 0 || a === b}
+        disabled={!ready}
         onTap={() => {
           mutate((d) => createSeries(d, name, planned, rules, a, b, isTest).db);
           onClose();
         }}
       >
-        {a === b ? 'Pick two different teams' : 'Create series'}
+        {ready ? 'Create series' : 'Name it, and pick two teams'}
       </Btn>
     </Sheet>
   );
