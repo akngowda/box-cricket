@@ -665,7 +665,12 @@ export function applyDelivery(
     overNo,
     ballNo,
   };
-  result.announcement = announce(result, extra, isBody);
+  result.announcement = announce(
+    result,
+    extra,
+    isBody,
+    dismissal ? dismissal.playerOutId === strikerId : null,
+  );
   result.commentary = describeBall(result, extra, declared, physical, isBody);
   return { state: s, result };
 }
@@ -834,29 +839,73 @@ const WICKET_WORDS: Record<WicketType, string> = {
   retired_hurt: 'retired hurt',
 };
 
+/** "no run" / "one run" / "four runs" — what a commentator would say. */
+function runsPhrase(n: number): string {
+  if (n === 0) return 'dot ball';
+  return `${say(n)} ${n === 1 ? 'run' : 'runs'}`;
+}
+
 /**
- * The per-ball audio line: what kind of ball it was, what it was worth, and
- * "out" if a wicket fell. No zone and no breakdown — the scorer watched the
- * shot, he only needs the number back. The team score is announced at the end
- * of each over instead (see overAnnouncement).
+ * The per-ball audio line.
+ *
+ * It says what happened, the way it would be called out on the turf: the runs
+ * with their unit, the kind of extra, and for a wicket the manner of dismissal
+ * instead of a number — because "no run" is not what anyone shouts when the
+ * stumps go over. A run out is the one dismissal that carries runs, so it gets
+ * both, and it names which end went.
  */
 function announce(
   r: DeliveryResult,
   extra: 'none' | 'wide' | 'noball',
   isBody: boolean,
+  outWasStriker: boolean | null,
 ): string {
   const parts: string[] = [];
-  if (extra === 'wide') parts.push('wide');
+  const w = r.wicket;
+
+  if (extra === 'wide') parts.push('wide ball');
   else if (extra === 'noball') parts.push('no ball');
-  else if (isBody) parts.push('body');
 
-  // On an impact over or impact ball, call the doubling and then the number —
-  // and the number is already the doubled one.
+  // A dismissal that cannot carry runs is announced on its own.
+  if (w && w.type !== 'runout') {
+    switch (w.type) {
+      case 'dotout':
+        parts.push('three consecutive dots, batsman out');
+        break;
+      case 'bodyout':
+        parts.push('three body hits in the innings, batsman out');
+        break;
+      case 'bowled':
+        parts.push('batsman bowled out');
+        break;
+      case 'caught':
+        parts.push('batsman caught out');
+        break;
+      case 'stumped':
+        parts.push('batsman stumped out');
+        break;
+      case 'retired_out':
+        parts.push('batsman retired out');
+        break;
+      case 'retired_hurt':
+        parts.push('batsman retired hurt');
+        break;
+    }
+    return parts.join(', ');
+  }
+
+  if (isBody) {
+    parts.push('body hit');
+    return parts.join(', ');
+  }
+
   if (r.multiplier === 2 && r.teamRuns > 0) parts.push('doubled');
+  parts.push(runsPhrase(r.teamRuns));
 
-  // A body hit is always 0 off the bat, so the number adds nothing.
-  if (!isBody) parts.push(say(r.teamRuns));
-  if (r.wicket) parts.push('out');
+  // R14a — the only dismissal that comes with runs.
+  if (w?.type === 'runout') {
+    parts.push(outWasStriker === false ? 'non striker run out' : 'batsman run out');
+  }
   return parts.join(', ');
 }
 

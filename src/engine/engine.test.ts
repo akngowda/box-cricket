@@ -948,34 +948,75 @@ describe('R16 / R30 — ball history and audio', () => {
     expect(s.batsmen.b1?.ballHistory).toEqual(['scored', 'dot', 'body']);
   });
 
-  it('R30 — the spoken line is the runs off that ball, and nothing about zones', () => {
-    expect(bowl(innings(), { ...SIX, physicalRuns: 1 }).result.announcement).toBe('seven');
-    expect(bowl(innings(), DOT).result.announcement).toBe('no run');
-    expect(bowl(innings(), { ...FOUR, physicalRuns: 2 }).result.announcement).toBe('six');
+  it('R30 — runs are spoken with their unit, never as a bare number', () => {
+    expect(bowl(innings(), { ...SIX, physicalRuns: 1 }).result.announcement).toBe('seven runs');
+    expect(bowl(innings(), { declaredRuns: 1, contact: 'pitched' }).result.announcement).toBe('one run');
+    expect(bowl(innings(), DOT).result.announcement).toBe('dot ball');
+    expect(bowl(innings(), { ...FOUR, physicalRuns: 2 }).result.announcement).toBe('six runs');
   });
 
   it('R30 — a wide, a no ball and a body hit are named', () => {
     const r = rules({ threeBodyOut: true });
-    expect(bowl(innings(), { extra: 'wide' }).result.announcement).toBe('wide, one');
-    expect(bowl(innings(), { extra: 'noball' }).result.announcement).toBe('no ball, two');
-    expect(bowl(innings(), { isBodyHit: true }, r).result.announcement).toBe('body');
+    expect(bowl(innings(), { extra: 'wide' }).result.announcement).toBe('wide ball, one run');
+    expect(bowl(innings(), { extra: 'noball', declaredRuns: 1, contact: 'pitched' }).result.announcement).toBe(
+      'no ball, three runs',
+    );
+    expect(bowl(innings(), { isBodyHit: true }, r).result.announcement).toBe('body hit');
   });
 
   it('R30 — an impact ball says "doubled" and reads the doubled total', () => {
     const r = DEFAULT_RULES;
-    let s = applyEvent(innings(), { type: 'impact_over_declared', overNo: 0 }, r);
-    expect(bowl(s, { ...SIX, physicalRuns: 1 }, r).result.announcement).toBe('doubled, fourteen');
-    // A dot in an impact over is still just a dot — nothing to double.
-    expect(bowl(s, DOT, r).result.announcement).toBe('no run');
+    const s = applyEvent(innings(), { type: 'impact_over_declared', overNo: 0 }, r);
+    expect(bowl(s, { ...SIX, physicalRuns: 1 }, r).result.announcement).toBe('doubled, fourteen runs');
+    expect(bowl(s, DOT, r).result.announcement).toBe('dot ball');
   });
 
-  it('R30 — a wicket adds "out" and nothing else', () => {
-    const r = rules({ threeDotOut: true });
-    const s = bowlMany(innings(), [DOT, DOT], r).state;
-    expect(bowl(s, DOT, r).result.announcement).toBe('no run, out');
+  it('R30 — a dismissal is called by its manner, with no runs read out', () => {
+    const r = rules({ threeDotOut: true, threeBodyOut: true });
+    const streak = bowlMany(innings(), [DOT, DOT], r).state;
+    expect(bowl(streak, DOT, r).result.announcement).toBe('three consecutive dots, batsman out');
+
     expect(
       bowl(innings(), { wicket: { type: 'bowled', newBatsmanId: 'b3' } }).result.announcement,
-    ).toBe('no run, out');
+    ).toBe('batsman bowled out');
+    expect(
+      bowl(innings(), { wicket: { type: 'caught', fielderId: 'o3', newBatsmanId: 'b3' } }).result
+        .announcement,
+    ).toBe('batsman caught out');
+    expect(
+      bowl(innings(), { extra: 'wide', wicket: { type: 'stumped', newBatsmanId: 'b3' } }).result
+        .announcement,
+    ).toBe('wide ball, batsman stumped out');
+
+    // Three body hits, announced as such.
+    let b = bowl(innings(), { isBodyHit: true }, r).state;
+    b = bowl(b, { isBodyHit: true }, r).state;
+    expect(bowl(b, { isBodyHit: true }, r).result.announcement).toBe(
+      'three body hits in the innings, batsman out',
+    );
+  });
+
+  it('R30 — a run out carries the runs and names which end went', () => {
+    const striker = bowl(innings(), {
+      physicalRuns: 2,
+      wicket: { type: 'runout', playerOutId: 'b1', newBatsmanId: 'b3', newBatsmanOnStrike: false },
+    });
+    expect(striker.result.announcement).toBe('two runs, batsman run out');
+
+    const nonStriker = bowl(innings(), {
+      declaredRuns: 1,
+      contact: 'pitched',
+      wicket: { type: 'runout', playerOutId: 'b2', newBatsmanId: 'b3', newBatsmanOnStrike: false },
+    });
+    expect(nonStriker.result.announcement).toBe('one run, non striker run out');
+
+    // On a no ball too: the extra is named, the runs still count.
+    const offNoBall = bowl(innings(), {
+      extra: 'noball',
+      physicalRuns: 1,
+      wicket: { type: 'runout', playerOutId: 'b2', newBatsmanId: 'b3', newBatsmanOnStrike: false },
+    });
+    expect(offNoBall.result.announcement).toBe('no ball, three runs, non striker run out');
   });
 
   it('R34 — the written commentary keeps the detail the audio drops', () => {
