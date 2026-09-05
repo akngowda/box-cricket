@@ -313,37 +313,45 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
         </>
       )}
 
-      {/* Live stats, one line each: who, his score, and his pips. Tapping a
-          name corrects a mis-tapped batsman. */}
+      {/* Both batsmen in one box, their pips under their own names; the
+          bowler in a box of his own beneath. */}
       <div className="pad" style={{ paddingTop: 6 }}>
-        <BatLine
-          db={db}
-          id={state.strikerId}
-          state={state}
-          label="on strike"
-          onFix={() => setFixing(state.strikerId)}
-        />
-        {state.nonStrikerId && (
-          <BatLine
-            db={db}
-            id={state.nonStrikerId}
-            state={state}
-            label={state.lastManActive ? 'other end' : ''}
-            onFix={() => setFixing(state.nonStrikerId)}
-          />
-        )}
+        <div className="statbox">
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <BatCell
+              db={db}
+              id={state.strikerId}
+              state={state}
+              note="on strike"
+              onFix={() => setFixing(state.strikerId)}
+            />
+            <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)' }} />
+            <BatCell
+              db={db}
+              id={state.nonStrikerId}
+              state={state}
+              note={state.lastManActive ? 'other end' : ''}
+              align="right"
+              onFix={() => setFixing(state.nonStrikerId)}
+            />
+          </div>
+        </div>
 
-        <div className="row" style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
-          <span>
-            <span style={{ color: 'var(--muted)' }}>bowling </span>
-            {playerName(db, state.currentBowlerId)}{' '}
-            <span style={{ fontFamily: 'var(--font-num)', fontSize: 14, color: 'var(--chalk)' }}>
-              {Math.floor((bowler?.legalBalls ?? 0) / rules.ballsPerOver)}.
-              {(bowler?.legalBalls ?? 0) % rules.ballsPerOver}-{bowler?.runsConceded ?? 0}-
-              {bowler?.wickets ?? 0}
+        <div className="statbox" style={{ marginTop: 6 }}>
+          <div className="row">
+            <span style={{ fontSize: 13 }}>
+              <span className="sub">bowling </span>
+              {playerName(db, state.currentBowlerId)}{' '}
+              <span style={{ fontFamily: 'var(--font-num)', fontSize: 15 }}>
+                {Math.floor((bowler?.legalBalls ?? 0) / rules.ballsPerOver)}.
+                {(bowler?.legalBalls ?? 0) % rules.ballsPerOver}-{bowler?.runsConceded ?? 0}-
+                {bowler?.wickets ?? 0}
+              </span>
             </span>
-          </span>
-          <span>{thisOver.length === 0 ? 'new over' : thisOver.map(token).join(' · ')}</span>
+            <span className="sub">
+              {thisOver.length === 0 ? 'new over' : thisOver.map(token).join(' · ')}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -673,33 +681,41 @@ function Opt({
   );
 }
 
-/** Name, state, score and pips on a single line. */
-function BatLine({
+/** One batsman: name, how he is placed, his score, and his pips below. */
+function BatCell({
   db,
   id,
   state,
-  label,
+  note,
+  align = 'left',
   onFix,
 }: {
   db: DB;
   id: string | null;
   state: InningsState;
-  label: string;
+  note: string;
+  align?: 'left' | 'right';
   onFix: () => void;
 }) {
-  if (!id) return null;
+  if (!id) return <div style={{ flex: 1 }} />;
   const b = state.batsmen[id];
+  const right = align === 'right';
   return (
-    <div className="batline">
-      <span className="who" {...tapProps(onFix)}>
-        {playerName(db, id)}
-        {label && <span className="sub"> ({label})</span>}
-      </span>
-      <span className="fig">
-        {b?.runs ?? 0}
-        <span style={{ fontSize: 12, color: 'var(--muted)' }}>({b?.ballsFaced ?? 0})</span>
-      </span>
-      <Hist history={b?.ballHistory ?? []} />
+    <div style={{ flex: 1, minWidth: 0, textAlign: right ? 'right' : 'left' }}>
+      {/* Tapping the name is how a mis-tapped batsman gets corrected. */}
+      <div style={{ fontSize: 13, whiteSpace: 'nowrap' }} {...tapProps(onFix)}>
+        <b>{playerName(db, id)}</b>
+        {note && <span className="sub"> ({note})</span>}{' '}
+        <span style={{ fontFamily: 'var(--font-num)', fontSize: 16, color: 'var(--sodium)' }}>
+          {b?.runs ?? 0}
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}> ({b?.ballsFaced ?? 0})</span>
+        </span>
+      </div>
+      <div className="hist" style={{ justifyContent: right ? 'flex-end' : 'flex-start' }}>
+        {(b?.ballHistory ?? []).slice(-6).map((pip, i) => (
+          <i key={i} className={pip === 'scored' ? 'g' : pip === 'body' ? 'b' : 'd'} />
+        ))}
+      </div>
     </div>
   );
 }

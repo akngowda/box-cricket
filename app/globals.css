@@ -693,31 +693,9 @@ td b {
   }
 }
 
-/* One batsman on one line: name, state, score, and his pips. */
-.batline {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0;
-  font-size: 13px;
-  min-height: 24px;
+/* The batsmen box: pips sit under each name. */
+.hist {
+  min-height: 8px;
+  margin-top: 3px;
 }
-.batline .who {
-  font-weight: 600;
-  white-space: nowrap;
-}
-.batline .fig {
-  font-family: var(--font-num), Impact, sans-serif;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--sodium);
-}
-.batline .hist {
-  margin-top: 0;
-  flex: 1;
-  justify-content: flex-end;
-}
-.batline .hist i {
-  width: 7px;
-  height: 7px;
-}
+
