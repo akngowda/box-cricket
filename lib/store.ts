@@ -186,33 +186,18 @@ export function resetAll(): void {
   }
 }
 
-/** A pool and two jerseys, so the app is usable the moment it opens. */
+/**
+ * A device with nothing on it starts empty.
+ *
+ * There used to be a demo pool here — sixteen invented players and three
+ * invented teams — from before there was a database. It made a fresh device
+ * look alive, but once syncing existed it did real damage: clearing a device
+ * recreated the fake pool, and the next sync pushed it into the scorebook. A
+ * clean database would refill itself with strangers. Real names come from the
+ * pool screen, or down from the scorebook.
+ */
 function seed(): DB {
-  const names = [
-    'Rahul', 'Kiran', 'Vinay', 'Suresh', 'Anil', 'Deepak', 'Arjun', 'Sameer',
-    'Vikram', 'Naveen', 'Rohit', 'Manoj', 'Imran', 'Ravi', 'Ajay', 'Farhan',
-  ];
-  const db: DB = {
-    ...EMPTY,
-    players: names.map((name) => ({
-      id: uid(),
-      name,
-      nickname: null,
-      photo_url: null,
-      batting_hand: null,
-      bowling_style: null,
-      is_active: true,
-      deleted_at: null,
-      created_at: now(),
-      created_by: null,
-    })),
-    jerseys: [
-      { id: uid(), name: 'BLR Bulls', short_name: 'BLR', colour_hex: '#ffb627', logo_url: null, deleted_at: null, created_at: now() },
-      { id: uid(), name: 'ATX Kings', short_name: 'ATX', colour_hex: '#5ed3a3', logo_url: null, deleted_at: null, created_at: now() },
-      { id: uid(), name: 'Turf Titans', short_name: 'TUR', colour_hex: '#ff5c45', logo_url: null, deleted_at: null, created_at: now() },
-    ],
-  };
-  return db;
+  return { ...EMPTY };
 }
 
 // --- R0: settings -----------------------------------------------------------

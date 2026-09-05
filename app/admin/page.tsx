@@ -256,6 +256,11 @@ function PoolSheet({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="pickerlist">
+      {list.length === 0 && (
+        <div className="sub" style={{ padding: '12px 2px' }}>
+          Nobody in the pool yet. Type a name above and press Add.
+        </div>
+      )}
       {list.map((p) => (
         <div key={p.id} className="row" style={{ padding: '9px 2px', borderBottom: '1px solid #1B2A22' }}>
           <span style={{ fontSize: 14, flex: 1 }}>{p.name}</span>
