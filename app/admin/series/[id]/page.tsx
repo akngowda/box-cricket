@@ -10,9 +10,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { fill, RulesEditor } from '../../../../lib/settings';
 import {
+  abandonMatch,
+  addJersey,
   addPlayer,
   addToSquad,
-  abandonMatch,
   createMatch,
   deleteMatch,
   deleteSeries,
