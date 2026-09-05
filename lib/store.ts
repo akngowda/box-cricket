@@ -297,6 +297,7 @@ export function createSeries(
   rules: RulesConfigOverride,
   jerseyA: string,
   jerseyB: string,
+  isTest = false,
 ): { db: DB; seriesId: string } {
   const seriesId = uid();
   const squadA: SquadRow = { id: uid(), series_id: seriesId, jersey_id: jerseyA, name_override: null, last_man_enabled: false, created_at: now() };
@@ -313,6 +314,7 @@ export function createSeries(
           season: null,
           planned_matches: plannedMatches,
           status: 'setup',
+          is_test: isTest,
           rules_config: rules as never,
           created_at: now(),
           closed_at: null,
@@ -320,7 +322,7 @@ export function createSeries(
         },
       ],
       squads: [...db.squads, squadA, squadB],
-    }, 'series_created', `${name.trim()} — ${plannedMatches} matches`),
+    }, 'series_created', `${name.trim()} — ${plannedMatches} matches${isTest ? ' (test)' : ''}`),
   };
 }
 
@@ -588,26 +590,25 @@ export function startSecondInnings(db: DB, matchId: string, firstInningsRuns: nu
   };
 }
 
+/** Only a test series may be deleted; a real one is permanent. */
+export function isTestSeries(db: DB, seriesId: string | null | undefined): boolean {
+  return db.series.find((s) => s.id === seriesId)?.is_test === true;
+}
+
+export function matchIsDeletable(db: DB, matchId: string): boolean {
+  const match = db.matches.find((m) => m.id === matchId);
+  return match ? isTestSeries(db, match.series_id) : false;
+}
+
 /**
- * Delete a match. If nothing was ever scored it goes completely; once there
- * are balls it is marked abandoned instead, so the scorecards and the stats
- * that reference it never break.
+ * Delete a test match outright — the innings, every ball, every event. This
+ * exists so trying the app out does not leave debris in the real record. A
+ * match in a real series cannot be deleted at all.
  */
 export function deleteMatch(db: DB, matchId: string): DB {
+  if (!matchIsDeletable(db, matchId)) return db;
   const inningsIds = db.innings.filter((i) => i.match_id === matchId).map((i) => i.id);
-  const scored = db.deliveries.some((d) => inningsIds.includes(d.innings_id) && !d.is_voided);
   const label = `match ${db.matches.find((m) => m.id === matchId)?.match_no ?? ''}`;
-
-  if (scored) {
-    return logActivity(
-      {
-        ...db,
-        matches: db.matches.map((m) => (m.id === matchId ? { ...m, status: 'abandoned' } : m)),
-      },
-      'match_abandoned',
-      `${label} (had scored balls, kept for the records)`,
-    );
-  }
   return logActivity(
     {
       ...db,
@@ -616,25 +617,17 @@ export function deleteMatch(db: DB, matchId: string): DB {
       deliveries: db.deliveries.filter((d) => !inningsIds.includes(d.innings_id)),
       match_events: db.match_events.filter((e) => e.match_id !== matchId),
     },
-    'match_deleted',
+    'test_match_deleted',
     label,
   );
 }
 
-/** Delete a series — soft once any match has been played (R35a). */
+/** Delete a test series and everything under it. Permanent, by design. */
 export function deleteSeries(db: DB, seriesId: string): DB {
-  const matches = db.matches.filter((m) => m.series_id === seriesId);
-  const inningsIds = db.innings.filter((i) => matches.some((m) => m.id === i.match_id)).map((i) => i.id);
-  const scored = db.deliveries.some((d) => inningsIds.includes(d.innings_id) && !d.is_voided);
+  if (!isTestSeries(db, seriesId)) return db;
+  const matchIds = db.matches.filter((m) => m.series_id === seriesId).map((m) => m.id);
+  const inningsIds = db.innings.filter((i) => matchIds.includes(i.match_id)).map((i) => i.id);
   const name = db.series.find((s) => s.id === seriesId)?.name ?? '';
-
-  if (scored) {
-    return logActivity(
-      { ...db, series: db.series.map((s) => (s.id === seriesId ? { ...s, deleted_at: now() } : s)) },
-      'series_hidden',
-      `${name} (has results, kept so old scorecards still work)`,
-    );
-  }
   return logActivity(
     {
       ...db,
@@ -643,10 +636,72 @@ export function deleteSeries(db: DB, seriesId: string): DB {
       squad_players: db.squad_players.filter((sp) => sp.series_id !== seriesId),
       matches: db.matches.filter((m) => m.series_id !== seriesId),
       innings: db.innings.filter((i) => !inningsIds.includes(i.id)),
-      match_events: db.match_events.filter((e) => matches.every((m) => m.id !== e.match_id)),
+      deliveries: db.deliveries.filter((d) => !inningsIds.includes(d.innings_id)),
+      match_events: db.match_events.filter((e) => !matchIds.includes(e.match_id)),
     },
-    'series_deleted',
+    'test_series_deleted',
     name,
+  );
+}
+
+/** Clear out every test series at once, to start a clean season. */
+export function deleteAllTestSeries(db: DB): DB {
+  let next = db;
+  for (const s of db.series.filter((x) => x.is_test)) next = deleteSeries(next, s.id);
+  return next;
+}
+
+// --- renaming (admin only; the UI is what gates it) -------------------------
+
+export function renamePlayer(db: DB, playerId: string, name: string): DB {
+  const from = db.players.find((p) => p.id === playerId)?.name ?? '';
+  return logActivity(
+    { ...db, players: db.players.map((p) => (p.id === playerId ? { ...p, name: name.trim() } : p)) },
+    'player_renamed',
+    `${from} to ${name.trim()}`,
+  );
+}
+
+export function renameJersey(db: DB, jerseyId: string, name: string): DB {
+  const from = db.jerseys.find((j) => j.id === jerseyId)?.name ?? '';
+  return logActivity(
+    {
+      ...db,
+      jerseys: db.jerseys.map((j) =>
+        j.id === jerseyId
+          ? { ...j, name: name.trim(), short_name: name.trim().slice(0, 3).toUpperCase() }
+          : j,
+      ),
+    },
+    'team_renamed',
+    `${from} to ${name.trim()}`,
+  );
+}
+
+export function renameSeries(db: DB, seriesId: string, name: string): DB {
+  const from = db.series.find((s) => s.id === seriesId)?.name ?? '';
+  return logActivity(
+    { ...db, series: db.series.map((s) => (s.id === seriesId ? { ...s, name: name.trim() } : s)) },
+    'series_renamed',
+    `${from} to ${name.trim()}`,
+  );
+}
+
+/**
+ * Abandon a real match: rained off, ran out of light, never finished. It keeps
+ * its place and its balls — the record of a weekend is not edited, only
+ * annotated — but it stops counting as live or as a result.
+ */
+export function abandonMatch(db: DB, matchId: string): DB {
+  return logActivity(
+    {
+      ...db,
+      matches: db.matches.map((m) =>
+        m.id === matchId ? { ...m, status: 'abandoned', result_text: 'Abandoned' } : m,
+      ),
+    },
+    'match_abandoned',
+    `match ${db.matches.find((m) => m.id === matchId)?.match_no ?? ''}`,
   );
 }
 

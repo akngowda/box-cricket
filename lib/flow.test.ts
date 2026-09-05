@@ -12,8 +12,13 @@ import {
   addToSquad,
   appendDelivery,
   appendEvent,
+  abandonMatch,
   createMatch,
   createSeries,
+  deleteMatch,
+  deleteSeries,
+  renamePlayer,
+  renameSeries,
   recordCall,
   recordDecision,
   recordSpin,
@@ -238,5 +243,50 @@ describe('R23 / R7d — the pad scores an innings', () => {
     expect(second.target).toBe(13);
     expect(second.batting_squad_id).toBe(first.bowling_squad_id);
     expect(after.innings.find((i) => i.seq === 1)!.status).toBe('complete');
+  });
+});
+
+describe('test series — disposable, and only those', () => {
+  it('a test series and every ball in it can be deleted; a real one cannot', () => {
+    const rules = { ...DEFAULT_RULES };
+
+    // A real series: delete does nothing at all.
+    const real = setUp();
+    let db = startInnings(real.db, real.matchId, rules);
+    db = score(db, db.innings[0]!.id, rules, { declaredRuns: 6, contact: 'direct' });
+    const afterReal = deleteSeries(db, real.seriesId);
+    expect(afterReal.series).toHaveLength(1);
+    expect(afterReal.deliveries).toHaveLength(1);
+    expect(deleteMatch(db, real.matchId).matches).toHaveLength(1);
+
+    // The same series marked as a test: everything goes.
+    const asTest: DB = {
+      ...db,
+      series: db.series.map((s) => ({ ...s, is_test: true })),
+    };
+    const wiped = deleteSeries(asTest, real.seriesId);
+    expect(wiped.series).toHaveLength(0);
+    expect(wiped.matches).toHaveLength(0);
+    expect(wiped.innings).toHaveLength(0);
+    expect(wiped.deliveries).toHaveLength(0);
+    expect(wiped.squads).toHaveLength(0);
+    // The player pool is untouched — those are real people.
+    expect(wiped.players.length).toBeGreaterThan(0);
+  });
+
+  it('a real match can be abandoned instead, keeping its record', () => {
+    const rules = { ...DEFAULT_RULES };
+    const { db, matchId } = setUp();
+    const after = abandonMatch(startInnings(db, matchId, rules), matchId);
+    expect(after.matches[0]?.status).toBe('abandoned');
+    expect(after.innings).toHaveLength(1);
+  });
+
+  it('renaming keeps the id, so nothing that points at it breaks', () => {
+    const { db, seriesId, pool } = setUp();
+    const renamed = renameSeries(renamePlayer(db, pool[0]!.id, 'Rahul K'), seriesId, 'Week 8');
+    expect(renamed.players.find((p) => p.id === pool[0]!.id)?.name).toBe('Rahul K');
+    expect(renamed.series.find((s) => s.id === seriesId)?.name).toBe('Week 8');
+    expect(renamed.audit.some((a) => a.action === 'player_renamed')).toBe(true);
   });
 });

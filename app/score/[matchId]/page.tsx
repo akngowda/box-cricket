@@ -166,7 +166,9 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const dis = {
     runs: runsDisabled,
     wide: hasScore || sel.dot || sel.body || nbSel,
-    noball: hasScore || sel.dot || sel.body || wideSel,
+    // A no ball carries declared and physical runs, so scoring must not grey
+    // it out — only a wide, a body hit or a dot rule it out.
+    noball: sel.dot || sel.body || wideSel,
     body: hasScore || (sel.dot && !sel.body) || wideSel || nbSel,
     dot: (hasScore || wideSel || nbSel) && !dotLocked,
     wicket: sel.dot && !sel.body,

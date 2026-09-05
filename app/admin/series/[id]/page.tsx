@@ -12,10 +12,14 @@ import { fill, RulesEditor } from '../../../../lib/settings';
 import {
   addPlayer,
   addToSquad,
+  abandonMatch,
   createMatch,
   deleteMatch,
   deleteSeries,
   extendSeries,
+  isTestSeries,
+  renameJersey,
+  renameSeries,
   generalSettings,
   recordCall,
   recordDecision,
@@ -29,7 +33,7 @@ import {
   useMutate,
   type DB,
 } from '../../../../lib/store';
-import { Btn, NumberPicker, Sheet, TopBar } from '../../../../lib/ui';
+import { Btn, NumberPicker, Sheet, tapProps, TopBar } from '../../../../lib/ui';
 import type { MatchRow, SquadRow } from '../../../../src/db/database.types';
 import type { RulesConfig, RulesConfigOverride } from '../../../../src/engine/types';
 
@@ -44,6 +48,7 @@ export default function SeriesPage() {
 
   const series = db.series.find((s) => s.id === params.id);
   if (!series) return <div className="app"><TopBar title="Series" back="/admin" /></div>;
+  const testSeries = isTestSeries(db, series.id);
 
   const squads = db.squads.filter((q) => q.series_id === series.id);
   const sizes = squads.map((q) => squadMembers(db, q.id).length);
@@ -55,7 +60,7 @@ export default function SeriesPage() {
 
   return (
     <div className="app">
-      <TopBar title={series.name} back="/admin" right={<span className="chip">{played}/{series.planned_matches}</span>} />
+      <TopBar title={`${series.name}${testSeries ? ' · test' : ''}`} back="/admin" right={<span className="chip">{played}/{series.planned_matches}</span>} />
 
       <div className="pad">
         {/* R1 — build the week's two sides from the pool. */}
@@ -64,7 +69,14 @@ export default function SeriesPage() {
           return (
             <div key={q.id} className="card" style={{ marginBottom: 9 }}>
               <div className="row">
-                <div className="tcode">{squadName(db, q.id)}</div>
+                <div className="tcode" {...tapProps(() => {
+                  const jersey = db.jerseys.find((j) => j.id === q.jersey_id);
+                  if (!jersey) return;
+                  const next = prompt('Team name', jersey.name);
+                  if (next && next.trim()) mutate((d) => renameJersey(d, jersey.id, next));
+                })}>
+                  {squadName(db, q.id)}
+                </div>
                 <span className="chip">{members.length} players</span>
               </div>
 
@@ -126,10 +138,19 @@ export default function SeriesPage() {
             db={db}
             match={m}
             onToss={() => setToss(m)}
-            onDelete={() => {
-              if (confirm(`Delete match ${m.match_no}? A match with scored balls is kept as abandoned.`))
-                mutate((d) => deleteMatch(d, m.id));
-            }}
+            {...(testSeries
+              ? {
+                  onDelete: () => {
+                    if (confirm(`Delete match ${m.match_no} and every ball in it? This cannot be undone.`))
+                      mutate((d) => deleteMatch(d, m.id));
+                  },
+                }
+              : {
+                  onAbandon: () => {
+                    if (confirm(`Abandon match ${m.match_no}? It keeps its balls but stops counting.`))
+                      mutate((d) => abandonMatch(d, m.id));
+                  },
+                })}
             {...(m.status === 'completed' && !matches.some((x) => x.status !== 'completed')
               ? { onNext: () => setNewMatch(true) }
               : {})}
@@ -145,18 +166,28 @@ export default function SeriesPage() {
           {sizeA < 2 || sizeB < 2 ? 'Both squads need at least 2 players' : 'Add a match'}
         </Btn>
 
-        <Btn
-          className="btn danger"
-          style={{ marginTop: 14 }}
-          onTap={() => {
-            if (confirm(`Delete ${series.name}? A series with results is hidden rather than wiped.`)) {
-              mutate((d) => deleteSeries(d, series.id));
-              router.push('/admin');
-            }
-          }}
-        >
-          Delete this series
-        </Btn>
+        {testSeries ? (
+          <Btn
+            className="btn danger"
+            style={{ marginTop: 14 }}
+            onTap={() => {
+              if (
+                confirm(
+                  `Delete ${series.name} and every match and ball in it? This cannot be undone.`,
+                )
+              ) {
+                mutate((d) => deleteSeries(d, series.id));
+                router.push('/admin');
+              }
+            }}
+          >
+            Delete this test series
+          </Btn>
+        ) : (
+          <div className="hint" style={{ marginTop: 14, textAlign: 'center' }}>
+            A real series is permanent. Individual matches can be abandoned.
+          </div>
+        )}
 
         <div className="row" style={{ marginTop: 14, marginBottom: 24 }}>
           <span className="sub" style={{ flex: 1 }}>Matches planned</span>
@@ -185,12 +216,14 @@ function MatchRowCard({
   onToss,
   onNext,
   onDelete,
+  onAbandon,
 }: {
   db: DB;
   match: MatchRow;
   onToss: () => void;
   onNext?: () => void;
   onDelete?: () => void;
+  onAbandon?: () => void;
 }) {
   const tossed = match.toss_decision !== null;
   return (
@@ -218,9 +251,15 @@ function MatchRowCard({
             <button className="btn primary">{match.status === 'completed' ? 'Scorecard' : 'Score'}</button>
           </Link>
         )}
+        {/* A test match can go entirely; a real one can only be abandoned. */}
         {onDelete && (
           <Btn className="btn danger" style={{ flex: 1 }} onTap={onDelete}>
             Delete
+          </Btn>
+        )}
+        {onAbandon && match.status !== 'completed' && match.status !== 'abandoned' && (
+          <Btn className="btn ghost" style={{ flex: 1 }} onTap={onAbandon}>
+            Abandon
           </Btn>
         )}
         {match.status === 'completed' && onNext && (

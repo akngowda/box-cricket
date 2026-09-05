@@ -20,7 +20,9 @@ import {
   addJersey,
   addPlayer,
   createSeries,
+  deleteAllTestSeries,
   deletePlayer,
+  renamePlayer,
   generalSettings,
   removeAdmin,
   resetAll,
@@ -29,13 +31,14 @@ import {
   useDB,
   useMutate,
 } from '../../lib/store';
-import { Btn, NumberPicker, Sheet, TabBar, TopBar } from '../../lib/ui';
+import { Btn, NumberPicker, Sheet, TabBar, tapProps, Toggle, TopBar } from '../../lib/ui';
 import type { RulesConfig } from '../../src/engine/types';
 
 type Panel = 'none' | 'pool' | 'settings' | 'series' | 'jersey' | 'admins' | 'activity';
 
 export default function Admin() {
   const db = useDB();
+  const mutate = useMutate();
   const session = useSession();
   const signOut = useSignOut();
   const [panel, setPanel] = useState<Panel>('none');
@@ -121,7 +124,12 @@ export default function Admin() {
                 <div className="card" style={{ marginBottom: 9 }}>
                   <div className="row">
                     <div>
-                      <div className="tcode">{s.name}</div>
+                      <div className="tcode">
+                        {s.name}
+                        {s.is_test && (
+                          <span className="chip amber" style={{ marginLeft: 6 }}>test</span>
+                        )}
+                      </div>
                       <div className="sub" style={{ marginTop: 3 }}>
                         {squads.map((q) => squadMembers(db, q.id).length).join(' v ')} players ·{' '}
                         {played} of {s.planned_matches} played
@@ -142,6 +150,20 @@ export default function Admin() {
           <b>Not built yet:</b> login and roles, the public viewer, offline sync and knockout
           brackets. This build keeps everything on this device.
         </div>
+
+        {db.series.some((s) => s.is_test) && (
+          <Btn
+            className="btn danger"
+            style={{ marginBottom: 9 }}
+            onTap={() => {
+              const n = db.series.filter((s) => s.is_test).length;
+              if (confirm(`Delete ${n} test series and every match and ball in them? This cannot be undone.`))
+                mutate((d) => deleteAllTestSeries(d));
+            }}
+          >
+            Delete all test series
+          </Btn>
+        )}
 
         <Btn
           className="btn ghost"
@@ -209,10 +231,20 @@ function PoolSheet({ onClose }: { onClose: () => void }) {
       <div className="pickerlist">
       {list.map((p) => (
         <div key={p.id} className="row" style={{ padding: '9px 2px', borderBottom: '1px solid #1B2A22' }}>
-          <span style={{ fontSize: 14 }}>{p.name}</span>
+          <span style={{ fontSize: 14, flex: 1 }}>{p.name}</span>
+          <Btn
+            className="btn ghost"
+            style={{ width: 66, padding: '7px 4px', fontSize: 12 }}
+            onTap={() => {
+              const next = prompt('New name', p.name);
+              if (next && next.trim()) mutate((d) => renamePlayer(d, p.id, next));
+            }}
+          >
+            Rename
+          </Btn>
           <Btn
             className="btn danger"
-            style={{ width: 78, padding: '7px 4px', fontSize: 12 }}
+            style={{ width: 72, padding: '7px 4px', fontSize: 12 }}
             onTap={() => mutate((d) => deletePlayer(d, p.id))}
           >
             Delete
@@ -263,6 +295,7 @@ function NewSeriesSheet({ onClose }: { onClose: () => void }) {
   const [a, setA] = useState(db.jerseys[0]?.id ?? '');
   const [b, setB] = useState(db.jerseys[1]?.id ?? '');
   const [newJersey, setNewJersey] = useState('');
+  const [isTest, setIsTest] = useState(false);
   const [rules, setRules] = useState<RulesConfig>(fill(generalSettings(db)));
 
   return (
@@ -324,6 +357,20 @@ function NewSeriesSheet({ onClose }: { onClose: () => void }) {
         </Btn>
       </div>
 
+      <div className="card" style={{ padding: '11px 13px', marginTop: 16 }}>
+        <div className="row">
+          <div style={{ flex: 1, fontSize: 13 }}>
+            Test series
+            <div className="sub" style={{ fontSize: 10.5, marginTop: 2 }}>
+              For trying things out. A test series — and every match and ball in it — can be
+              deleted outright later. Leave this off for a real weekend: those can never be
+              deleted.
+            </div>
+          </div>
+          <Toggle on={isTest} onTap={() => setIsTest(!isTest)} />
+        </div>
+      </div>
+
       <div className="lbl" style={{ marginTop: 18 }}>
         Settings for this series — pre-filled from general
       </div>
@@ -334,7 +381,7 @@ function NewSeriesSheet({ onClose }: { onClose: () => void }) {
         style={{ marginTop: 12 }}
         disabled={name.trim().length === 0 || a === b}
         onTap={() => {
-          mutate((d) => createSeries(d, name, planned, rules, a, b).db);
+          mutate((d) => createSeries(d, name, planned, rules, a, b, isTest).db);
           onClose();
         }}
       >

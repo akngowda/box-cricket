@@ -77,6 +77,8 @@ export interface SeriesRow {
   season: string | null;
   planned_matches: number;
   status: SeriesStatus;
+  /** A throwaway series: it and everything under it can be deleted. */
+  is_test: boolean;
   /** R0 — the series level of the cascade, shaped like RulesConfig. */
   rules_config: Json;
   created_at: string;
