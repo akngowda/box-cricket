@@ -1,0 +1,13 @@
+node_modules
+.next
+.next-build
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+
+# Working documents, not app code — these stay local.
+01-RULES-SPEC.md
+02-ARCHITECTURE.md
+03-BUILD-PROMPT.md
+prototype.html

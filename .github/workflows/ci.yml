@@ -1,0 +1,28 @@
+# Continuous integration — free on GitHub Actions for public repos, and well
+# inside the free minutes for private ones.
+#
+# Vercel handles delivery: connect this repo once in the Vercel dashboard and
+# every push to main deploys to production, every branch gets a preview URL.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Engine, database and flow tests
+        run: npm test
+      - name: Production build
+        run: npm run build

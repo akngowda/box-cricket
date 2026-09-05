@@ -1,0 +1,16 @@
+# Keep-alive. A free Supabase project pauses after 7 days idle; this pings the
+# health route daily so a Sunday match never meets a sleeping database.
+# Harmless before Supabase is wired — it just pings the site.
+name: Keep alive
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the health route
+        run: curl -fsS "${{ vars.SITE_URL || 'https://box-cricket.vercel.app' }}/api/health" || exit 0
