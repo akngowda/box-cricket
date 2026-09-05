@@ -6,11 +6,12 @@
  */
 
 import { useParams } from 'next/navigation';
+import { useState } from 'react';
 import { matchInnings, matchRules, scoreboard } from '../../../../lib/innings';
 import { fmt, overs, strikeRate } from '../../../../lib/stats';
 import { playerName, squadName, useDB, type DB } from '../../../../lib/store';
 import { useSession } from '../../../../lib/session';
-import { PrintButton, PrintHeader, TabBar, TopBar } from '../../../../lib/ui';
+import { PrintButton, PrintHeader, TabBar, tapProps, TopBar } from '../../../../lib/ui';
 import type { InningsRow } from '../../../../src/db/database.types';
 import type { RulesConfig, WicketType } from '../../../../src/engine/types';
 
@@ -29,6 +30,7 @@ export default function Scorecard() {
   const params = useParams<{ matchId: string }>();
   const db = useDB();
   const session = useSession();
+  const [tab, setTab] = useState(0);
   const match = db.matches.find((m) => m.id === params.matchId);
 
   if (!match) {
@@ -61,8 +63,42 @@ export default function Scorecard() {
           </div>
         )}
         {innings.length === 0 && <div className="note">No innings yet.</div>}
-        {innings.map((i) => (
-          <InningsCard key={i.id} db={db} innings={i} rules={rules} />
+
+        {/* One tab per side, so nobody has to scroll past a full card to
+            reach the other team's. */}
+        {innings.length > 1 && (
+          <div
+            className="row noprint"
+            style={{ gap: 0, borderBottom: '1px solid var(--line)', marginBottom: 12 }}
+          >
+            {innings.map((i, idx) => (
+              <button
+                key={i.id}
+                {...tapProps(() => setTab(idx))}
+                style={{
+                  flex: 1,
+                  background: 'none',
+                  border: 0,
+                  borderBottom: `2px solid ${tab === idx ? 'var(--sodium)' : 'transparent'}`,
+                  color: tab === idx ? 'var(--sodium)' : 'var(--muted)',
+                  fontFamily: 'inherit',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  padding: '10px 0',
+                }}
+              >
+                {squadName(db, i.batting_squad_id)}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* On screen: the selected side. On paper: both, because a printed
+            report should be the whole match. */}
+        {innings.map((i, idx) => (
+          <div key={i.id} className={idx === tab ? undefined : 'printonly'}>
+            <InningsCard db={db} innings={i} rules={rules} />
+          </div>
         ))}
         <PrintButton label="Save this scorecard as PDF" />
       </div>
