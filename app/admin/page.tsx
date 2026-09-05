@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { isAdmin, isSuperAdmin, normalise, SUPER_ADMIN } from '../../lib/auth';
 import { useSession, useSignInWithPassword, useSignOut } from '../../lib/session';
 import { isRemote, supabase } from '../../lib/supabase';
+import { forcePull } from '../../lib/sync';
 import { fill, RulesEditor } from '../../lib/settings';
 import {
   activity,
@@ -166,10 +167,25 @@ export default function Admin() {
         )}
 
         <div className="note" style={{ marginBottom: 9 }}>
-          <b>Starting fresh?</b> Clear the database first — run{' '}
-          <b>supabase/reset-data.sql</b> in the Supabase SQL editor — then clear this device
-          below. In that order, or the next sync pulls it all back.
+          <b>Starting fresh?</b> Clear the scorebook first, then press <b>Match the scorebook</b>{' '}
+          on every device that has the app open. That replaces each device with whatever the
+          scorebook now holds — which, after a wipe, is nothing.
         </div>
+
+        <Btn
+          className="btn"
+          style={{ marginBottom: 9 }}
+          onTap={() => {
+            if (
+              confirm(
+                'Replace everything on this device with what the scorebook holds? Anything scored here and not yet saved is lost.',
+              )
+            )
+              void forcePull();
+          }}
+        >
+          Match the scorebook
+        </Btn>
 
         <Btn
           className="btn danger"

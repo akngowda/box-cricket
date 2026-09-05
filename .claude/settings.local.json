@@ -64,7 +64,8 @@
       "Bash(curl -s -o /dev/null -w \"series page %{http_code}\\\\n\" http://localhost:3000/admin/series/none)",
       "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Let the super admin flag a series as test so it can be deleted; matches-only reset script *)",
       "Bash(curl -s -o /dev/null -w \"admin %{http_code}\\\\n\" http://localhost:3000/admin)",
-      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Sync honours deletions made in the database; no internal names in user messages *)"
+      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Sync honours deletions made in the database; no internal names in user messages *)",
+      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Add Match the scorebook: replace a device with the database exactly *)"
     ]
   }
 }

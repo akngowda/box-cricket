@@ -410,3 +410,35 @@ export function startSyncLoop(): () => void {
     timer = null;
   };
 }
+
+
+/**
+ * Take the scorebook as gospel: replace this device with exactly what the
+ * database holds, discarding anything local that is not there.
+ *
+ * The ordinary merge deliberately protects unsent work, which is right while
+ * scoring and wrong after a deliberate wipe — the device keeps restoring what
+ * you just deleted. This is the explicit way to say "the database is correct,
+ * I am not". It throws away anything scored on this device and not yet saved,
+ * so it asks first in the UI.
+ */
+export async function forcePull(): Promise<SyncStatus> {
+  if (!isRemote) return { state: 'off', pending: 0 };
+  try {
+    const server = await pull();
+    const local = snapshot();
+    const next: DB = { ...local };
+    const known: Known = {};
+    for (const t of TABLES) {
+      const rows = (server[t] ?? []) as Array<{ id: string }>;
+      (next as unknown as Record<string, unknown[]>)[t] = rows;
+      known[t] = rows.map((r) => r.id);
+    }
+    replaceAll(next);
+    saveKnown(known);
+    publish({ state: 'synced', pending: 0, at: Date.now() });
+    return { state: 'synced', pending: 0 };
+  } catch (err) {
+    return { state: 'error', pending: 0, message: (err as Error).message };
+  }
+}
