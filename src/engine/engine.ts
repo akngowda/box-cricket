@@ -899,7 +899,9 @@ function announce(
     return parts.join(', ');
   }
 
-  if (r.multiplier === 2 && r.teamRuns > 0) parts.push('doubled');
+  // Only the bat runs double. A wide in an impact over is still just a wide,
+  // so calling it "doubled" would be wrong as well as confusing.
+  if (r.multiplier === 2 && r.batRuns > 0) parts.push('doubled');
   parts.push(runsPhrase(r.teamRuns));
 
   // R14a — the only dismissal that comes with runs.
@@ -909,15 +911,38 @@ function announce(
   return parts.join(', ');
 }
 
-/** Spoken at the end of every over: the team score, and who is in. */
+/**
+ * Spoken at the end of every over: the score, and when a side is chasing, what
+ * is still needed. That is the number everyone on the sideline is doing in
+ * their head anyway.
+ */
 export function overAnnouncement(
   state: InningsState,
   overNo: number,
+  rules?: RulesConfig,
   strikerRuns?: { name: string; runs: number },
 ): string {
   const parts = [`End of over ${overNo + 1}`, `${state.runs} for ${state.wickets}`];
+
+  if (state.target !== null && rules) {
+    const needed = state.target - state.runs;
+    const ballsLeft = totalLegalBalls(rules) - state.legalBalls;
+    if (needed > 0 && ballsLeft > 0) {
+      parts.push(
+        `needs ${needed} ${needed === 1 ? 'run' : 'runs'} from ${ballsLeft} ${
+          ballsLeft === 1 ? 'ball' : 'balls'
+        }`,
+      );
+    }
+  }
+
   if (strikerRuns) parts.push(`${strikerRuns.name} ${strikerRuns.runs}`);
   return parts.join(', ');
+}
+
+/** Spoken once, when the match is settled. */
+export function resultAnnouncement(text: string): string {
+  return text;
 }
 
 /** The written commentary line — this one keeps the detail. */

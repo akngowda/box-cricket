@@ -40,6 +40,7 @@ import {
   impactOverIsDefault,
   impactOverOf,
   overAnnouncement,
+  resultAnnouncement,
 } from '../../../src/engine/engine';
 import type {
   Contact,
@@ -121,7 +122,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     const key = `${current.id}:${board.results.length}`;
     if (spoken.current === key) return;
     spoken.current = key;
-    speak(overAnnouncement(board.state, last.overNo));
+    speak(overAnnouncement(board.state, last.overNo, rules));
   }, [audio, board, current, rules.audioPerOver]);
 
   if (!current) {
@@ -358,7 +359,16 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
       </div>
 
       {done ? (
-        <InningsOver db={db} match={match} innings={current} state={state} rules={rules} />
+        <InningsOver
+          db={db}
+          match={match}
+          innings={current}
+          state={state}
+          rules={rules}
+          say={(line) => {
+            if (audio) speak(line);
+          }}
+        />
       ) : (
         <div className="pad" style={{ marginTop: 12 }}>
           <div className="key" style={{ marginBottom: 8 }}>
@@ -1098,12 +1108,14 @@ function InningsOver({
   innings,
   state,
   rules,
+  say,
 }: {
   db: DB;
   match: MatchRow;
   innings: InningsRow;
   state: InningsState;
   rules: RulesConfig;
+  say: (line: string) => void;
 }) {
   const mutate = useMutate();
   const all = matchInnings(db, match.id);
@@ -1127,11 +1139,16 @@ function InningsOver({
   const chased = state.runs > targetRuns;
   const tied = state.runs === targetRuns;
   const winner = tied ? null : chased ? innings.batting_squad_id : innings.bowling_squad_id;
+  // Wickets in hand: the squad loses all but one, unless last man is on, in
+  // which case the last batsman's wicket counts too.
+  const allWickets = state.battingOrder.length - (state.lastManEnabled ? 0 : 1);
+  const inHand = Math.max(0, allWickets - state.wickets);
+  const margin = targetRuns - state.runs;
   const text = tied
     ? 'Match tied'
     : chased
-      ? `${squadName(db, innings.batting_squad_id)} won by ${state.battingOrder.length - 1 - state.wickets} wickets`
-      : `${squadName(db, innings.bowling_squad_id)} won by ${targetRuns - state.runs} runs`;
+      ? `${squadName(db, innings.batting_squad_id)} won by ${inHand} ${inHand === 1 ? 'wicket' : 'wickets'}`
+      : `${squadName(db, innings.bowling_squad_id)} won by ${margin} ${margin === 1 ? 'run' : 'runs'}`;
 
   return (
     <div className="pad" style={{ marginTop: 14 }}>
@@ -1147,7 +1164,11 @@ function InningsOver({
         <Btn
           className="btn primary"
           style={{ marginTop: 12 }}
-          onTap={() => mutate((d) => completeMatch(d, match.id, winner, text))}
+          onTap={() => {
+            mutate((d) => completeMatch(d, match.id, winner, text));
+            // R30 — call the result: won by so many wickets, or so many runs.
+            say(resultAnnouncement(text));
+          }}
         >
           Save the result
         </Btn>

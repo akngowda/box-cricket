@@ -55,7 +55,8 @@
       "Bash(curl -s -o /dev/null -w \"score %{http_code}\\\\n\" http://localhost:3000/score/none)",
       "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Fix sync rolling back local edits, which broke Start the chase *)",
       "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Ask who comes in when the app records a dot out or body out *)",
-      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Test series are deletable, real ones permanent; abandon, renames, no-ball fix *)"
+      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Test series are deletable, real ones permanent; abandon, renames, no-ball fix *)",
+      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Audio: result margin, chase target each over, no doubling call on a wide *)"
     ]
   }
 }

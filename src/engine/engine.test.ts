@@ -1028,7 +1028,7 @@ describe('R16 / R30 — ball history and audio', () => {
   it('R30 — the over announcement carries the team score', () => {
     const { state } = bowlMany(innings(), [SIX, DOT, DOT, DOT, DOT, DOT]);
     expect(overAnnouncement(state, 0)).toBe('End of over 1, 6 for 0');
-    expect(overAnnouncement(state, 0, { name: 'Rahul', runs: 6 })).toBe(
+    expect(overAnnouncement(state, 0, DEFAULT_RULES, { name: 'Rahul', runs: 6 })).toBe(
       'End of over 1, 6 for 0, Rahul 6',
     );
   });
@@ -1038,5 +1038,28 @@ describe('R16 / R30 — ball history and audio', () => {
     const s = bowlMany(innings(), [DOT, DOT, { extra: 'wide' }, DOT], r).state;
     expect(currentOver(s, r)).toBe(0);
     expect(ballsInCurrentOver(s, r)).toBe(3);
+  });
+});
+
+describe('R30 — audio at the end of an over and the end of a match', () => {
+  it('a chase is told what it still needs, in runs and balls', () => {
+    const r = rules({ oversPerInnings: 2 });
+    const chase = innings({ target: 30 });
+    const { state } = bowlMany(chase, Array.from({ length: 6 }, () => ({ declaredRuns: 1, contact: 'pitched' as const })), r);
+    expect(overAnnouncement(state, 0, r)).toBe('End of over 1, 6 for 0, needs 24 runs from 6 balls');
+  });
+
+  it('a first innings is just the score — there is nothing to chase yet', () => {
+    const r = rules({ oversPerInnings: 2 });
+    const { state } = bowlMany(innings(), Array.from({ length: 6 }, () => DOT), r);
+    expect(overAnnouncement(state, 0, r)).toBe('End of over 1, 0 for 0');
+  });
+
+  it('a wide in an impact over is not called "doubled" — only bat runs double', () => {
+    const r = DEFAULT_RULES;
+    const s = applyEvent(innings(), { type: 'impact_over_declared', overNo: 0 }, r);
+    expect(bowl(s, { extra: 'wide' }, r).result.announcement).toBe('wide ball, one run');
+    // The bat still doubles on the same over.
+    expect(bowl(s, SIX, r).result.announcement).toBe('doubled, twelve runs');
   });
 });
