@@ -30,6 +30,7 @@ import {
   voidLastBall,
   type DB,
 } from '../../../lib/store';
+import { requestSync } from '../../../lib/sync';
 import { Btn, Sheet, tapProps, TopBar } from '../../../lib/ui';
 import { toDeliveryRow } from '../../../src/db/mappers';
 import {
@@ -222,6 +223,9 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
       const row = toDeliveryRow(real, out.result, state, { inningsId: current.id, seq });
       return appendDelivery(d, { ...row, is_voided: false, created_at: new Date().toISOString() });
     });
+    // The ball is already saved locally; this only asks the loop to get it
+    // upstream sooner. Scoring never waits for it.
+    requestSync();
     if (audio && rules.audioPerBall) speak(out.result.announcement);
     navigator.vibrate?.(out.result.wicket ? [30, 50, 30] : 10);
     setSel(EMPTY);

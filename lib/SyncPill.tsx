@@ -15,40 +15,27 @@
 import { useEffect, useState } from 'react';
 import { useSession } from './session';
 import { isRemote } from './supabase';
-import { subscribeToChanges, syncNow, type SyncStatus } from './sync';
+import { currentStatus, requestSync, startSyncLoop, watchStatus, type SyncStatus } from './sync';
 import { tapProps } from './ui';
 
 export function SyncPill() {
-  const [status, setStatus] = useState<SyncStatus>({ state: isRemote ? 'syncing' : 'off', pending: 0 });
+  const [status, setStatus] = useState<SyncStatus>(currentStatus());
   const [open, setOpen] = useState(false);
   const session = useSession();
 
+  // One loop for the whole app; the pill only reports what it is doing.
   useEffect(() => {
-    if (!isRemote) return;
-    let alive = true;
-
-    const run = async (): Promise<void> => {
-      setStatus((s) => ({ ...s, state: 'syncing' }));
-      const next = await syncNow();
-      if (alive) setStatus(next);
-    };
-
-    void run();
-    const timer = window.setInterval(run, 30_000);
-    const unsubscribe = subscribeToChanges(() => void run());
-    window.addEventListener('online', run);
-
+    const stop = startSyncLoop();
+    const unwatch = watchStatus(setStatus);
     return () => {
-      alive = false;
-      window.clearInterval(timer);
-      window.removeEventListener('online', run);
-      unsubscribe();
+      unwatch();
+      stop();
     };
   }, []);
 
-  // Re-sync as soon as somebody signs in: that is usually what unblocks it.
+  // Signing in is usually what unblocks a refused push.
   useEffect(() => {
-    if (isRemote && session.role) void syncNow().then(setStatus);
+    if (session.role) requestSync();
   }, [session.role]);
 
   if (!isRemote || status.state === 'off') return null;
@@ -100,7 +87,7 @@ export function SyncPill() {
             style={{ marginTop: 9, padding: 8, fontSize: 12 }}
             {...tapProps(() => {
               setOpen(false);
-              void syncNow().then(setStatus);
+              requestSync();
             })}
           >
             Try again now

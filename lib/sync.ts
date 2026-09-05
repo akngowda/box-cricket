@@ -234,3 +234,107 @@ export function subscribeToChanges(onChange: () => void): () => void {
     void client.removeChannel(channel);
   };
 }
+
+
+// ---------------------------------------------------------------------------
+// The sync loop.
+//
+// Scoring must never wait for, or be lost to, the network. A ball is written
+// locally and the UI moves on; this keeps trying to get it upstream until it
+// succeeds. Failures back off so a dead connection does not hammer the phone,
+// and any success or new ball resets the delay.
+// ---------------------------------------------------------------------------
+
+const RETRY_MIN = 3_000;
+const RETRY_MAX = 60_000;
+const IDLE = 30_000;
+
+let running = false;
+let queued = false;
+let timer: number | null = null;
+let attempt = 0;
+let status: SyncStatus = { state: isRemote ? 'syncing' : 'off', pending: 0 };
+const watchers = new Set<(s: SyncStatus) => void>();
+
+export function currentStatus(): SyncStatus {
+  return status;
+}
+
+export function watchStatus(cb: (s: SyncStatus) => void): () => void {
+  watchers.add(cb);
+  cb(status);
+  return () => watchers.delete(cb);
+}
+
+function publish(next: SyncStatus): void {
+  status = next;
+  watchers.forEach((w) => w(next));
+}
+
+function schedule(ms: number): void {
+  if (typeof window === 'undefined') return;
+  if (timer !== null) window.clearTimeout(timer);
+  timer = window.setTimeout(() => {
+    timer = null;
+    void runSync();
+  }, ms);
+}
+
+/**
+ * Ask for a sync now. Safe to call on every ball: one runs at a time, and a
+ * request made mid-run queues exactly one more pass afterwards.
+ */
+export function requestSync(): void {
+  if (!isRemote) return;
+  if (running) {
+    queued = true;
+    return;
+  }
+  void runSync();
+}
+
+async function runSync(): Promise<void> {
+  if (!isRemote || running) return;
+  running = true;
+  publish({ ...status, state: 'syncing' });
+
+  let next: SyncStatus;
+  try {
+    next = await syncNow();
+  } catch (err) {
+    // Never let a sync failure surface as an app error.
+    next = { state: 'error', pending: status.pending, message: (err as Error).message };
+  }
+  running = false;
+  publish(next);
+
+  const settled = next.state === 'synced' && next.pending === 0;
+  if (settled) attempt = 0;
+  else attempt += 1;
+
+  if (queued) {
+    queued = false;
+    schedule(0);
+    return;
+  }
+  // Keep trying until everything is upstream; idle poll once it is.
+  schedule(settled ? IDLE : Math.min(RETRY_MIN * 2 ** (attempt - 1), RETRY_MAX));
+}
+
+/** Start the loop and keep it honest about connectivity. */
+export function startSyncLoop(): () => void {
+  if (!isRemote || typeof window === 'undefined') return () => {};
+  const wake = (): void => requestSync();
+  window.addEventListener('online', wake);
+  document.addEventListener('visibilitychange', wake);
+  const unsubscribe = subscribeToChanges(wake);
+  void runSync();
+
+  return () => {
+    window.removeEventListener('online', wake);
+    document.removeEventListener('visibilitychange', wake);
+    unsubscribe();
+    if (timer !== null) window.clearTimeout(timer);
+    timer = null;
+  };
+}
