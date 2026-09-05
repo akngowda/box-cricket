@@ -31,13 +31,26 @@ function BoxDiagram() {
       {/* the pitch, running the full length */}
       <rect x="20" y="82" width="280" height="26" fill="#0B1512" opacity=".55" />
 
-      {/* side nets — top and bottom */}
+      {/* Side nets, coloured by the zone they run alongside — this is where
+          the cones actually sit, so the bands are read off the side netting
+          exactly as they are on the turf. */}
+      {(
+        [
+          [20, 95, '#3A4A40'],
+          [95, 235, '#5F7A6B'],
+          [235, 300, '#FFB627'],
+        ] as Array<[number, number, string]>
+      ).map(([x1, x2, colour]) => (
+        <g key={x1} stroke={colour} strokeWidth={netWidth}>
+          <line x1={x1} y1="20" x2={x2} y2="20" />
+          <line x1={x1} y1="25" x2={x2} y2="25" />
+          <line x1={x1} y1="165" x2={x2} y2="165" />
+          <line x1={x1} y1="170" x2={x2} y2="170" />
+        </g>
+      ))}
+
+      {/* back net, behind the keeper — same weight as the sides */}
       <g stroke={NET} strokeWidth={netWidth}>
-        <line x1="20" y1="20" x2="300" y2="20" />
-        <line x1="20" y1="25" x2="300" y2="25" />
-        <line x1="20" y1="165" x2="300" y2="165" />
-        <line x1="20" y1="170" x2="300" y2="170" />
-        {/* back net, behind the keeper — same weight as the sides */}
         <line x1="10" y1="20" x2="10" y2="170" />
         <line x1="15" y1="20" x2="15" y2="170" />
       </g>
@@ -48,8 +61,10 @@ function BoxDiagram() {
         <line x1="310" y1="20" x2="310" y2="170" />
       </g>
 
-      {/* mid line — where the non-striker stands, inside zone 1 */}
+      {/* The mid line IS the non-striker's crease: where he stands, and the
+          far limit of a physical run. Drawn full height, like a crease line. */}
       <line x1="170" y1="26" x2="170" y2="164" stroke="#7E9489" strokeDasharray="4 4" />
+      <line x1="170" y1="74" x2="170" y2="116" stroke="#E9EFEA" strokeWidth="2" />
 
       {/* bowling crease, with the stumps standing on it */}
       <line x1="235" y1="74" x2="235" y2="116" stroke="#E9EFEA" strokeWidth="2" />
@@ -67,7 +82,7 @@ function BoxDiagram() {
       </g>
       <g fill="#7E9489" fontSize="8" textAnchor="middle">
         <text x="12" y="182">back net</text>
-        <text x="170" y="182">mid line</text>
+        <text x="170" y="182">mid line · non-striker</text>
         <text x="255" y="182">bowling crease</text>
         <text x="307" y="182" fill="#FF5C45">front net</text>
       </g>
@@ -89,7 +104,12 @@ const SECTIONS: Array<{ title: string; body: React.ReactNode }> = [
         <p>
           <b>Zone 0</b> is the band around the batsman. <b>Zone 1</b> runs to the bowling crease.{' '}
           <b>Zone 2</b> starts at the bowling crease, where the stumps stand, and runs to the front
-          net. <b>Zone 3</b> is the front net itself.
+          net. <b>Zone 3</b> is the front net itself. The side netting is marked in the same
+          colours, since that is where the cones stand.
+        </p>
+        <p>
+          The dashed line across the middle is the <b>non-striker&apos;s crease</b>: where he
+          stands, and as far as a run ever goes.
         </p>
       </>
     ),
