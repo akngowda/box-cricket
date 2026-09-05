@@ -75,7 +75,7 @@ const WICKET_LABEL: Record<WicketType, string> = {
   retired_hurt: 'Retired hurt',
 };
 
-type SheetName = 'none' | 'wicket' | 'bowler' | 'phys' | 'roster' | 'start';
+type SheetName = 'none' | 'wicket' | 'bowler' | 'phys' | 'roster' | 'start' | 'autoout';
 
 export default function ScorePage() {
   const params = useParams<{ matchId: string }>();
@@ -185,8 +185,24 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const impactBallNext =
     rules.impactBallAllowed && state.legalBalls === rules.oversPerInnings * rules.ballsPerOver - 1;
 
+  /** Who is left to walk in, in batting order. */
+  const availableBatsmen = state.battingOrder.filter(
+    (id) => !state.batsmen[id]?.hasBatted && !state.batsmen[id]?.isOut,
+  );
+
   // --- commit ---------------------------------------------------------------
-  const commit = (wicket?: DeliveryInput['wicket']): void => {
+  const commit = (wicket?: DeliveryInput['wicket'], chosenIn?: string): void => {
+    // R16c — the app records a third dot or third body hit by itself, but the
+    // scorer still decides who comes in. Ask before writing the ball, rather
+    // than hoping he noticed the preview.
+    const incoming = chosenIn ?? autoIn;
+    if (!wicket && !incoming && availableBatsmen.length > 1) {
+      const auto = tryApplyFull(state, { ...input, id: 'probe' }, rules)?.result.wicket;
+      if (auto?.automatic) {
+        setSheet('autoout');
+        return;
+      }
+    }
     const id = uuid();
     const real: DeliveryInput = {
       ...input,
@@ -194,7 +210,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
       ...(wicket ? { wicket } : {}),
       // R16c — the app records a third dot or third body hit itself, but the
       // scorer still says who walks in.
-      ...(autoIn ? { newBatsmanId: autoIn } : {}),
+      ...(incoming ? { newBatsmanId: incoming } : {}),
     };
     const out = tryApplyFull(state, real, rules);
     if (!out) return;
@@ -287,13 +303,11 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
           <div className="pad" style={{ paddingTop: 8 }}>
             <div className="lbl" style={{ margin: '0 0 4px' }}>Who comes in?</div>
             <div className="grid3">
-              {state.battingOrder
-                .filter((id) => !state.batsmen[id]?.hasBatted && !state.batsmen[id]?.isOut)
-                .map((id) => (
-                  <Opt key={id} on={autoIn === id} onTap={() => setAutoIn(id)} style={{ fontSize: 12 }}>
-                    {playerName(db, id)}
-                  </Opt>
-                ))}
+              {availableBatsmen.map((id) => (
+                <Opt key={id} on={autoIn === id} onTap={() => setAutoIn(id)} style={{ fontSize: 12 }}>
+                  {playerName(db, id)}
+                </Opt>
+              ))}
             </div>
           </div>
         </>
@@ -551,6 +565,36 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
           }}
           onClose={needsBowler ? undefined : () => setSheet('none')}
         />
+      )}
+
+      {sheet === 'autoout' && preview?.wicket && (
+        <Sheet
+          title={
+            preview.wicket.type === 'dotout'
+              ? 'Third dot in a row — who comes in?'
+              : 'Third body hit — who comes in?'
+          }
+          onClose={() => setSheet('none')}
+        >
+          <div className="hint" style={{ marginBottom: 10 }}>
+            {playerName(db, preview.wicket.playerOutId)} is out. Pick the next batsman and the ball
+            is scored.
+          </div>
+          <div className="grid3">
+            {availableBatsmen.map((id) => (
+              <Opt
+                key={id}
+                onTap={() => {
+                  setAutoIn(id);
+                  commit(undefined, id);
+                }}
+                style={{ fontSize: 12 }}
+              >
+                {playerName(db, id)}
+              </Opt>
+            ))}
+          </div>
+        </Sheet>
       )}
 
       {sheet === 'phys' && (
