@@ -60,7 +60,9 @@
       "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Colour the side nets by zone; mark the mid line as the non-striker crease *)",
       "Bash(curl -s -o /dev/null -w \"scorecard %{http_code}\\\\n\" http://localhost:3000/m/none/scorecard)",
       "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Scorecard tabs per innings; sync pill explains what pending means *)",
-      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Scorecard and ball-by-ball as tabs; only the scorecard prints *)"
+      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Scorecard and ball-by-ball as tabs; only the scorecard prints *)",
+      "Bash(curl -s -o /dev/null -w \"series page %{http_code}\\\\n\" http://localhost:3000/admin/series/none)",
+      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Let the super admin flag a series as test so it can be deleted; matches-only reset script *)"
     ]
   }
 }

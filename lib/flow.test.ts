@@ -19,6 +19,7 @@ import {
   deleteSeries,
   renamePlayer,
   renameSeries,
+  setSeriesIsTest,
   recordCall,
   recordDecision,
   recordSpin,
@@ -272,6 +273,24 @@ describe('test series — disposable, and only those', () => {
     expect(wiped.squads).toHaveLength(0);
     // The player pool is untouched — those are real people.
     expect(wiped.players.length).toBeGreaterThan(0);
+  });
+
+  it('marking a series as a test is what makes it deletable', () => {
+    const rules = { ...DEFAULT_RULES };
+    const { db, matchId, seriesId } = setUp();
+    let after = startInnings(db, matchId, rules);
+    after = score(after, after.innings[0]!.id, rules, { declaredRuns: 4, contact: 'direct' });
+
+    // A live, real match resists deletion.
+    expect(deleteMatch(after, matchId).matches).toHaveLength(1);
+
+    // Flag it, and the same call clears it out completely.
+    const flagged = setSeriesIsTest(after, seriesId, true);
+    const gone = deleteSeries(flagged, seriesId);
+    expect(gone.series).toHaveLength(0);
+    expect(gone.matches).toHaveLength(0);
+    expect(gone.deliveries).toHaveLength(0);
+    expect(gone.players.length).toBeGreaterThan(0);
   });
 
   it('a real match can be abandoned instead, keeping its record', () => {

@@ -20,6 +20,7 @@ import {
   isTestSeries,
   renameJersey,
   renameSeries,
+  setSeriesIsTest,
   generalSettings,
   recordCall,
   recordDecision,
@@ -33,7 +34,9 @@ import {
   useMutate,
   type DB,
 } from '../../../../lib/store';
-import { Btn, NumberPicker, Sheet, tapProps, TopBar } from '../../../../lib/ui';
+import { isSuperAdmin } from '../../../../lib/auth';
+import { useSession } from '../../../../lib/session';
+import { Btn, NumberPicker, Sheet, tapProps, Toggle, TopBar } from '../../../../lib/ui';
 import type { MatchRow, SquadRow } from '../../../../src/db/database.types';
 import type { RulesConfig, RulesConfigOverride } from '../../../../src/engine/types';
 
@@ -41,6 +44,7 @@ export default function SeriesPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const db = useDB();
+  const email = useSession().email;
   const mutate = useMutate();
   const [addTo, setAddTo] = useState<SquadRow | null>(null);
   const [newMatch, setNewMatch] = useState(false);
@@ -165,6 +169,26 @@ export default function SeriesPage() {
         >
           {sizeA < 2 || sizeB < 2 ? 'Both squads need at least 2 players' : 'Add a match'}
         </Btn>
+
+        {/* Only the super admin decides what counts as practice data. */}
+        {isSuperAdmin(email) && (
+          <div className="card" style={{ padding: '11px 13px', marginTop: 16 }}>
+            <div className="row">
+              <div style={{ flex: 1, fontSize: 13 }}>
+                Test series
+                <div className="sub" style={{ fontSize: 10.5, marginTop: 2 }}>
+                  {testSeries
+                    ? 'This one can be deleted, matches and balls and all.'
+                    : 'Mark it as practice data to make it deletable.'}
+                </div>
+              </div>
+              <Toggle
+                on={testSeries}
+                onTap={() => mutate((d) => setSeriesIsTest(d, series.id, !testSeries))}
+              />
+            </div>
+          </div>
+        )}
 
         {testSeries ? (
           <Btn

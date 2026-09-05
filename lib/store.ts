@@ -652,6 +652,22 @@ export function deleteSeries(db: DB, seriesId: string): DB {
   );
 }
 
+/**
+ * Mark an existing series as a test — or take the mark off.
+ *
+ * Series created before the flag existed count as real, so this is the way to
+ * dispose of practice data without a trip to the SQL editor. Marking a series
+ * as a test is itself logged, because it is what makes deleting it possible.
+ */
+export function setSeriesIsTest(db: DB, seriesId: string, isTest: boolean): DB {
+  const name = db.series.find((s) => s.id === seriesId)?.name ?? '';
+  return logActivity(
+    { ...db, series: db.series.map((s) => (s.id === seriesId ? { ...s, is_test: isTest } : s)) },
+    isTest ? 'series_marked_test' : 'series_marked_real',
+    name,
+  );
+}
+
 /** Clear out every test series at once, to start a clean season. */
 export function deleteAllTestSeries(db: DB): DB {
   let next = db;
