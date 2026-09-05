@@ -589,6 +589,22 @@ export function startSecondInnings(db: DB, matchId: string, firstInningsRuns: nu
   };
 }
 
+/**
+ * Test series are private to admins.
+ *
+ * Trying the app out should not put a fake scoreline in front of the group, so
+ * anything marked as a test is filtered out of every public screen. Admins see
+ * everything, with the series badged as a test.
+ */
+export function visibleSeries(db: DB, isAdmin: boolean): DB['series'] {
+  return db.series.filter((s) => s.deleted_at === null && (isAdmin || !s.is_test));
+}
+
+export function visibleMatches(db: DB, isAdmin: boolean): DB['matches'] {
+  const allowed = new Set(visibleSeries(db, isAdmin).map((s) => s.id));
+  return db.matches.filter((m) => allowed.has(m.series_id));
+}
+
 /** Only a test series may be deleted; a real one is permanent. */
 export function isTestSeries(db: DB, seriesId: string | null | undefined): boolean {
   return db.series.find((s) => s.id === seriesId)?.is_test === true;

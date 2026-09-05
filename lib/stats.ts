@@ -84,8 +84,14 @@ export const overs = (balls: number, perOver = 6): string =>
  * Aggregate every player's numbers. Pass a seriesId to scope it to one
  * weekend, or leave it out for the overall table.
  */
-export function playerStats(db: DB, seriesId?: string): PlayerStats[] {
-  const matches = db.matches.filter((m) => (seriesId ? m.series_id === seriesId : true));
+export function playerStats(db: DB, seriesId?: string, includeTest = false): PlayerStats[] {
+  // Practice matches never touch anybody's record.
+  const testSeries = new Set(db.series.filter((s) => s.is_test).map((s) => s.id));
+  const matches = db.matches.filter(
+    (m) =>
+      (seriesId ? m.series_id === seriesId : true) &&
+      (includeTest || !testSeries.has(m.series_id)),
+  );
   const matchIds = new Set(matches.map((m) => m.id));
   const inningsIds = new Set(db.innings.filter((i) => matchIds.has(i.match_id)).map((i) => i.id));
 

@@ -113,3 +113,31 @@ describe('deletions made in the database', () => {
     expect(after.db.series).toHaveLength(1);
   });
 });
+
+describe('scoring while a sync is in flight', () => {
+  it('a ball scored mid-sync is not written over by the sync that started before it', () => {
+    // The sync pulled this from the server, and held it.
+    const server = { deliveries: [{ id: 'd1' }] };
+    const known = { deliveries: ['d1'] };
+
+    // Meanwhile the scorer scored two more, so the device now holds three.
+    const nowOnDevice: DB = {
+      ...EMPTY,
+      deliveries: [{ id: 'd1' }, { id: 'd2' }, { id: 'd3' }] as unknown as DB['deliveries'],
+    };
+
+    // Merging against the CURRENT device state keeps them.
+    const merged = mergeTables(nowOnDevice, server, new Set(), known).db;
+    expect(merged.deliveries.map((d) => d.id).sort()).toEqual(['d1', 'd2', 'd3']);
+  });
+
+  it('rapid additions to a squad all survive', () => {
+    const server = { squad_players: [{ id: 'sp1' }] };
+    const known = { squad_players: ['sp1'] };
+    const device: DB = {
+      ...EMPTY,
+      squad_players: [{ id: 'sp1' }, { id: 'sp2' }, { id: 'sp3' }] as unknown as DB['squad_players'],
+    };
+    expect(mergeTables(device, server, new Set(), known).db.squad_players).toHaveLength(3);
+  });
+});

@@ -48,11 +48,14 @@ export function Rankings({
   const [scope, setScope] = useState<Scope>(scopes[0] ?? 'overall');
   const [board, setBoard] = useState<RankKey>('runs');
 
+  // Inside a test series the rankings are about that series, so they include
+  // it; everywhere else practice is excluded.
+  const inTest = db.series.find((s) => s.id === seriesId)?.is_test === true;
   const stats =
     scope === 'overall'
       ? playerStats(db)
       : scope === 'series' && seriesId
-        ? playerStats(db, seriesId)
+        ? playerStats(db, seriesId, inTest)
         : matchOnly(db, matchId);
 
   const rows = rank(stats, board).slice(0, 12);
@@ -180,5 +183,5 @@ function matchOnly(db: DB, matchId?: string): PlayerStats[] {
     matches: [match],
     innings: db.innings.filter((i) => i.match_id === matchId),
   };
-  return playerStats(scoped, match.series_id);
+  return playerStats(scoped, match.series_id, true);
 }

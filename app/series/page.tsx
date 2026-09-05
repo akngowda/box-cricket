@@ -4,14 +4,14 @@
 
 import Link from 'next/link';
 import { seriesState } from '../../lib/stats';
-import { squadCode, useDB } from '../../lib/store';
+import { squadCode, useDB, visibleSeries } from '../../lib/store';
 import { useSession } from '../../lib/session';
 import { TabBar, TopBar } from '../../lib/ui';
 
 export default function AllSeries() {
   const db = useDB();
   const session = useSession();
-  const list = db.series.filter((s) => s.deleted_at === null).slice().reverse();
+  const list = visibleSeries(db, session.role === 'admin').slice().reverse();
 
   return (
     <div className="app">

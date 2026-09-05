@@ -32,7 +32,13 @@ export default function Scorecard() {
   const session = useSession();
   const [tab, setTab] = useState(0);
   const [view, setView] = useState<'card' | 'balls'>('card');
-  const match = db.matches.find((m) => m.id === params.matchId);
+  const found = db.matches.find((m) => m.id === params.matchId);
+  // A test series is admin-only, link or no link.
+  const hidden =
+    found !== undefined &&
+    session.role !== 'admin' &&
+    db.series.find((x) => x.id === found.series_id)?.is_test === true;
+  const match = hidden ? undefined : found;
 
   if (!match) {
     return (

@@ -21,8 +21,9 @@ export default function SeriesView() {
   const db = useDB();
   const session = useSession();
   const state = seriesState(db, params.seriesId);
+  const hidden = state.series?.is_test === true && session.role !== 'admin';
 
-  if (!state.series) {
+  if (!state.series || hidden) {
     return (
       <div className="app">
         <TopBar title="Series" back="/" />

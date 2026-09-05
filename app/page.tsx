@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { matchInnings, matchRules, scoreboard } from '../lib/innings';
-import { squadCode, squadName, useDB, type DB } from '../lib/store';
+import { squadCode, squadName, useDB, visibleMatches, type DB } from '../lib/store';
 import { TabBar } from '../lib/ui';
 import { useSession } from '../lib/session';
 import type { MatchRow } from '../src/db/database.types';
@@ -10,9 +10,11 @@ import type { MatchRow } from '../src/db/database.types';
 export default function Home() {
   const db = useDB();
   const session = useSession();
-  const live = db.matches.filter((m) => m.status === 'live');
-  const done = db.matches.filter((m) => m.status === 'completed').reverse();
-  const upcoming = db.matches.filter((m) => m.status === 'scheduled');
+  // A test series stays out of sight unless an admin is looking.
+  const matches = visibleMatches(db, session.role === 'admin');
+  const live = matches.filter((m) => m.status === 'live');
+  const done = matches.filter((m) => m.status === 'completed').reverse();
+  const upcoming = matches.filter((m) => m.status === 'scheduled');
 
   return (
     <div className="app">
@@ -57,7 +59,7 @@ export default function Home() {
           </>
         )}
 
-        {db.matches.length === 0 && (
+        {matches.length === 0 && (
           <div className="note" style={{ marginTop: 8 }}>
             No matches yet. Sign in from <b>Login</b>, bottom right, to build the weekend&apos;s two
             squads, add a match and run the toss.

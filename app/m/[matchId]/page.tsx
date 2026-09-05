@@ -21,7 +21,13 @@ export default function MatchView() {
   const db = useDB();
   const session = useSession();
   const email = useCurrentEmail();
-  const match = db.matches.find((m) => m.id === params.matchId);
+  const found = db.matches.find((m) => m.id === params.matchId);
+  // A test series is admin-only, link or no link.
+  const hidden =
+    found !== undefined &&
+    session.role !== 'admin' &&
+    db.series.find((x) => x.id === found.series_id)?.is_test === true;
+  const match = hidden ? undefined : found;
 
   if (!match) {
     return (

@@ -266,15 +266,23 @@ export async function syncNow(): Promise<SyncStatus> {
   }
 
   try {
-    const local = snapshot();
     const known = loadKnown();
     // Look first, so deliveries already stored are not sent again — and so a
     // row deleted in the database is recognised before anything is pushed.
     const before = await pull();
-    const trimmed = mergeTables(local, before, new Set(TABLES), known).db;
+    const trimmed = mergeTables(snapshot(), before, new Set(TABLES), known).db;
     const { problems, failed } = await push(trimmed, before);
     const after = await pull();
-    const { db: merged, known: nextKnown } = mergeTables(trimmed, after, failed, known);
+
+    // Read the device again, right now.
+    //
+    // A sync takes a few hundred milliseconds, and the scorer does not stop
+    // during them. Merging against the snapshot taken at the start would write
+    // it back over the top and silently drop every ball scored while the
+    // network was busy — which is exactly what "score two quickly and one goes
+    // missing" was. Anything added meanwhile is unknown to the server and not
+    // in `known`, so it survives as local-only work and goes up next pass.
+    const { db: merged, known: nextKnown } = mergeTables(snapshot(), after, failed, known);
     replaceAll(merged);
     saveKnown(nextKnown);
 
