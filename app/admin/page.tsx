@@ -165,14 +165,25 @@ export default function Admin() {
           </Btn>
         )}
 
+        <div className="note" style={{ marginBottom: 9 }}>
+          <b>Starting fresh?</b> Clear the database first — run{' '}
+          <b>supabase/reset-data.sql</b> in the Supabase SQL editor — then clear this device
+          below. In that order, or the next sync pulls it all back.
+        </div>
+
         <Btn
-          className="btn ghost"
+          className="btn danger"
           style={{ marginBottom: 20 }}
           onTap={() => {
-            if (confirm('Wipe all local data and reseed the pool?')) resetAll();
+            if (
+              confirm(
+                'Delete every player, team, series and ball on this device? The database is not touched.',
+              )
+            )
+              resetAll();
           }}
         >
-          Reset local data
+          Clear this device
         </Btn>
       </div>
 

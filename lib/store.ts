@@ -167,8 +167,16 @@ export function snapshot(): DB {
   return read();
 }
 
+/**
+ * Clear this device completely. Not a reseed: starting fresh means an empty
+ * pool, ready for the real names. The demo pool only appears on a browser
+ * that has never opened the app.
+ *
+ * Clear the database first (supabase/reset-data.sql), or the next sync simply
+ * pulls everything back down.
+ */
 export function resetAll(): void {
-  cache = seed();
+  cache = { ...EMPTY };
   write(cache);
 }
 
