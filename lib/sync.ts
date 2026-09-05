@@ -157,10 +157,36 @@ export interface PushResult {
 async function push(
   local: DB,
   remote: Partial<Record<TableName, unknown[]>>,
+  known: Known = {},
 ): Promise<PushResult> {
   const client = supabase();
   const problems: string[] = [];
   const failed = new Set<TableName>();
+
+  // Deletions travel too.
+  //
+  // A row this device had synced, and no longer holds, was deleted here — so
+  // delete it there. Without this, removing a test series only emptied the
+  // device and the next pull put it straight back. Children go first so a
+  // foreign key never blocks the parent.
+  for (const t of [...TABLES].reverse()) {
+    const seen = known[t] ?? [];
+    if (seen.length === 0) continue;
+    const stillHere = new Set(
+      ((local[t] ?? []) as unknown as Array<{ id: string }>).map((r) => r.id),
+    );
+    const onServer = new Set(((remote[t] ?? []) as Array<{ id: string }>).map((r) => r.id));
+    const removed = seen.filter((id) => !stillHere.has(id) && onServer.has(id));
+    if (removed.length === 0) continue;
+
+    // The database still has the final say: it only permits deleting a test
+    // series and what hangs off it, so a real match cannot be erased this way.
+    const { error } = await client.from(t).delete().in('id', removed);
+    if (error) {
+      problems.push(readable(error.message));
+      failed.add(t);
+    }
+  }
 
   for (const t of TABLES) {
     const localRows = ((local[t] ?? []) as unknown as Array<Record<string, unknown>>).filter(
@@ -271,7 +297,7 @@ export async function syncNow(): Promise<SyncStatus> {
     // row deleted in the database is recognised before anything is pushed.
     const before = await pull();
     const trimmed = mergeTables(snapshot(), before, new Set(TABLES), known).db;
-    const { problems, failed } = await push(trimmed, before);
+    const { problems, failed } = await push(trimmed, before, known);
     const after = await pull();
 
     // Read the device again, right now.

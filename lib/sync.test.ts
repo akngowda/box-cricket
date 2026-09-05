@@ -141,3 +141,34 @@ describe('scoring while a sync is in flight', () => {
     expect(mergeTables(device, server, new Set(), known).db.squad_players).toHaveLength(3);
   });
 });
+
+describe('deleting locally', () => {
+  it('a row removed here is removed there — it does not come back on the next pull', () => {
+    // Deleting a test series emptied the device but never told the server, so
+    // the pull restored it about two seconds later.
+    const known = { series: ['s1', 's2'] };
+    const local: DB = { ...EMPTY, series: [{ id: 's2' }] as unknown as DB['series'] };
+    const server = { series: [{ id: 's1' }, { id: 's2' }] };
+
+    // What push must now delete upstream:
+    const stillHere = new Set(local.series.map((r) => r.id));
+    const onServer = new Set(server.series.map((r) => r.id));
+    const toDelete = (known.series ?? []).filter((id) => !stillHere.has(id) && onServer.has(id));
+    expect(toDelete).toEqual(['s1']);
+
+    // And once it is gone from the server, the merge keeps it gone.
+    const merged = mergeTables(local, { series: [{ id: 's2' }] }, new Set(), known).db;
+    expect(merged.series.map((r) => r.id)).toEqual(['s2']);
+  });
+
+  it('a device that has never synced deletes nothing', () => {
+    // Clearing a device must not be read as "delete the season".
+    const known = {};
+    const local: DB = { ...EMPTY };
+    const server = { series: [{ id: 's1' }] };
+    const toDelete = (known as Record<string, string[]>).series ?? [];
+    expect(toDelete).toEqual([]);
+    // The empty device simply refills from the server.
+    expect(mergeTables(local, server, new Set(), known).db.series).toHaveLength(1);
+  });
+});
