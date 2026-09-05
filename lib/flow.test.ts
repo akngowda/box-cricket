@@ -31,6 +31,7 @@ import {
   type DB,
 } from './store';
 import { matchRules, scoreboard } from './innings';
+import { playerStats } from './stats';
 import { toDeliveryRow } from '../src/db/mappers';
 import { applyDelivery } from '../src/engine/engine';
 import { DEFAULT_RULES } from '../src/engine/rules';
@@ -307,5 +308,26 @@ describe('test series — disposable, and only those', () => {
     expect(renamed.players.find((p) => p.id === pool[0]!.id)?.name).toBe('Rahul K');
     expect(renamed.series.find((s) => s.id === seriesId)?.name).toBe('Week 8');
     expect(renamed.audit.some((a) => a.action === 'player_renamed')).toBe(true);
+  });
+});
+
+describe('test cricket stays out of the record', () => {
+  it('runs scored in a test series do not appear in overall stats', () => {
+    const rules = { ...DEFAULT_RULES };
+    const { db, matchId } = setUp();
+    let after = startInnings(db, matchId, rules);
+    after = score(after, after.innings[0]!.id, rules, { declaredRuns: 6, contact: 'direct' });
+
+    const striker = after.deliveries[0]!.striker_id;
+    expect(playerStats(after).find((p) => p.playerId === striker)?.runs).toBe(6);
+
+    // The same cricket, marked as practice: overall forgets it.
+    const asTest = setSeriesIsTest(after, after.series[0]!.id, true);
+    expect(playerStats(asTest).find((p) => p.playerId === striker)?.runs ?? 0).toBe(0);
+
+    // But the series' own page still shows it, or you could not check the app.
+    expect(
+      playerStats(asTest, asTest.series[0]!.id, true).find((p) => p.playerId === striker)?.runs,
+    ).toBe(6);
   });
 });
