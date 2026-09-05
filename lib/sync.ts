@@ -83,26 +83,69 @@ export interface PushResult {
 }
 
 /**
- * Push every local row, not just the new ones.
+ * Push local state up.
  *
- * Pushing only unseen ids was a real bug: marking the first innings complete
- * changes an existing row, so the server never heard about it, and the next
- * pull handed back the stale copy and undid the change on screen. Upsert is
- * keyed by the client-generated id, so sending everything is safe and makes
- * the server match this device.
+ * Two different jobs, because the log is not like the rest:
+ *
+ *  - Ordinary rows (players, squads, matches, innings...) are upserted whole.
+ *    Sending only new ids was a bug: marking an innings complete edits an
+ *    existing row, the server never heard, and the next pull undid it.
+ *
+ *  - Deliveries are append-only and the database enforces it with a trigger.
+ *    Re-sending a stored ball is rejected — created_by and created_at never
+ *    match exactly — and because an upsert is one statement, that rejection
+ *    took the NEW balls in the same batch down with it. So a scored ball
+ *    stopped reaching the database at all. Here they are inserted once, and
+ *    the only later change ever sent is a void.
  */
-async function push(local: DB): Promise<PushResult> {
+async function push(
+  local: DB,
+  remote: Partial<Record<TableName, unknown[]>>,
+): Promise<PushResult> {
   const client = supabase();
   const problems: string[] = [];
   const failed = new Set<TableName>();
 
   for (const t of TABLES) {
-    const rows = ((local[t] ?? []) as unknown as Array<Record<string, unknown>>)
-      .filter((r) => typeof r.id === 'string')
-      .map(sanitise);
-    if (rows.length === 0) continue;
+    const localRows = ((local[t] ?? []) as unknown as Array<Record<string, unknown>>).filter(
+      (r) => typeof r.id === 'string',
+    );
+    if (localRows.length === 0) continue;
 
-    const { error } = await client.from(t).upsert(rows as never, { onConflict: 'id' });
+    if (t === 'deliveries') {
+      const stored = new Map(
+        ((remote[t] ?? []) as Array<{ id: string; is_voided?: boolean }>).map((r) => [r.id, r]),
+      );
+
+      const fresh = localRows.filter((r) => !stored.has(r.id as string)).map(sanitise);
+      if (fresh.length > 0) {
+        const { error } = await client.from(t).insert(fresh as never);
+        if (error) {
+          problems.push(`${t}: ${error.message}`);
+          failed.add(t);
+        }
+      }
+
+      // R7d — a void is the one edit a ball is allowed.
+      const toVoid = localRows.filter(
+        (r) => r.is_voided === true && stored.get(r.id as string)?.is_voided === false,
+      );
+      for (const row of toVoid) {
+        const { error } = await client
+          .from(t)
+          .update({ is_voided: true } as never)
+          .eq('id', row.id as string);
+        if (error) {
+          problems.push(`${t}: ${error.message}`);
+          failed.add(t);
+        }
+      }
+      continue;
+    }
+
+    const { error } = await client.from(t).upsert(localRows.map(sanitise) as never, {
+      onConflict: 'id',
+    });
     if (error) {
       problems.push(`${t}: ${error.message}`);
       failed.add(t);
@@ -156,7 +199,9 @@ export async function syncNow(): Promise<SyncStatus> {
 
   try {
     const local = snapshot();
-    const { problems, failed } = await push(local);
+    // Look first, so deliveries already stored are not sent again.
+    const before = await pull();
+    const { problems, failed } = await push(local, before);
     const after = await pull();
     const merged = mergeTables(local, after, failed);
     replaceAll(merged);

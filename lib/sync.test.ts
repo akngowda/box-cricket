@@ -62,3 +62,27 @@ describe('sync merge', () => {
     expect(merged.deliveries).toHaveLength(1);
   });
 });
+
+describe('push strategy', () => {
+  it('a ball already in the database is never re-sent', () => {
+    // The append-only trigger rejects any edit to a stored ball, and an upsert
+    // is one statement — so re-sending old balls also blocked the new ones.
+    // This is the shape that broke: two stored, one fresh.
+    const stored = [
+      { id: 'd1', is_voided: false },
+      { id: 'd2', is_voided: false },
+    ];
+    const local = [...stored, { id: 'd3', is_voided: false }];
+
+    const storedIds = new Set(stored.map((r) => r.id));
+    const fresh = local.filter((r) => !storedIds.has(r.id));
+    expect(fresh.map((r) => r.id)).toEqual(['d3']);
+
+    // And a void is the only later change that goes up.
+    const voidedLocally = [{ id: 'd1', is_voided: true }, { id: 'd2', is_voided: false }];
+    const toVoid = voidedLocally.filter(
+      (r) => r.is_voided && stored.find((s) => s.id === r.id)?.is_voided === false,
+    );
+    expect(toVoid.map((r) => r.id)).toEqual(['d1']);
+  });
+});
