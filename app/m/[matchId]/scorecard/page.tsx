@@ -31,6 +31,7 @@ export default function Scorecard() {
   const db = useDB();
   const session = useSession();
   const [tab, setTab] = useState(0);
+  const [view, setView] = useState<'card' | 'balls'>('card');
   const match = db.matches.find((m) => m.id === params.matchId);
 
   if (!match) {
@@ -63,6 +64,28 @@ export default function Scorecard() {
           </div>
         )}
         {innings.length === 0 && <div className="note">No innings yet.</div>}
+
+        {/* Scorecard or ball by ball. The card is what people want, and it is
+            the only thing that prints — a report is a summary, not a log. */}
+        {innings.length > 0 && (
+          <div className="grid2 noprint" style={{ marginBottom: 10 }}>
+            {(
+              [
+                ['card', 'Scorecard'],
+                ['balls', 'Ball by ball'],
+              ] as Array<['card' | 'balls', string]>
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                {...tapProps(() => setView(id))}
+                className={view === id ? 'btn primary' : 'btn ghost'}
+                style={{ padding: 9, fontSize: 13 }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* One tab per side, so nobody has to scroll past a full card to
             reach the other team's. */}
@@ -97,7 +120,13 @@ export default function Scorecard() {
             report should be the whole match. */}
         {innings.map((i, idx) => (
           <div key={i.id} className={idx === tab ? undefined : 'printonly'}>
-            <InningsCard db={db} innings={i} rules={rules} />
+            {/* On paper always the card, whichever tab is open on screen. */}
+            <InningsCard db={db} innings={i} rules={rules} view={view} />
+            {view === 'balls' && (
+              <div className="printonly">
+                <InningsCard db={db} innings={i} rules={rules} view="card" />
+              </div>
+            )}
           </div>
         ))}
         <PrintButton label="Save this scorecard as PDF" />
@@ -108,7 +137,17 @@ export default function Scorecard() {
   );
 }
 
-function InningsCard({ db, innings, rules }: { db: DB; innings: InningsRow; rules: RulesConfig }) {
+function InningsCard({
+  db,
+  innings,
+  rules,
+  view,
+}: {
+  db: DB;
+  innings: InningsRow;
+  rules: RulesConfig;
+  view: 'card' | 'balls';
+}) {
   const board = scoreboard(db, innings, rules);
   if (!board || board.error) {
     return <div className="note">{squadName(db, innings.batting_squad_id)} — not started.</div>;
@@ -129,6 +168,8 @@ function InningsCard({ db, innings, rules }: { db: DB; innings: InningsRow; rule
         </span>
       </div>
 
+      {view === 'card' && (
+        <>
       <table>
         <thead>
           <tr>
@@ -224,19 +265,31 @@ function InningsCard({ db, innings, rules }: { db: DB; innings: InningsRow; rule
           </div>
         </>
       )}
+        </>
+      )}
 
-      <div className="lbl">Ball by ball</div>
-      {board.results
-        .slice()
-        .reverse()
-        .map((r, i) => (
-          <div key={i} className="sub" style={{ padding: '4px 0', borderBottom: '1px solid #1B2A22' }}>
-            <span style={{ color: 'var(--chalk)', fontFamily: 'var(--font-num)', marginRight: 6 }}>
-              {r.overNo}.{r.ballNo}
-            </span>
-            {r.commentary}
-          </div>
-        ))}
+      {/* The log is screen-only: it would run to pages and tells you nothing
+          the card does not. */}
+      {view === 'balls' && (
+        <div className="noprint">
+          {board.results.length === 0 && <div className="sub">No balls yet.</div>}
+          {board.results
+            .slice()
+            .reverse()
+            .map((r, i) => (
+              <div
+                key={i}
+                className="sub"
+                style={{ padding: '4px 0', borderBottom: '1px solid #1B2A22' }}
+              >
+                <span style={{ color: 'var(--chalk)', fontFamily: 'var(--font-num)', marginRight: 6 }}>
+                  {r.overNo}.{r.ballNo}
+                </span>
+                {r.commentary}
+              </div>
+            ))}
+        </div>
+      )}
     </div>
   );
 }

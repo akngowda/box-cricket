@@ -640,7 +640,7 @@ td b {
   }
 
   .printonly {
-    display: block;
+    display: block !important;
   }
 
   .card,
