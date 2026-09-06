@@ -36,6 +36,8 @@ import { toDeliveryRow } from '../../../src/db/mappers';
 import {
   applyDelivery,
   ballsInCurrentOver,
+  ballsUntilEligible,
+  bowlerCapFor,
   currentOver,
   eligibleBowlers,
   impactOverIsDefault,
@@ -853,6 +855,14 @@ function Total({ sel, preview, rules }: { sel: Selection; preview: DeliveryResul
   );
 }
 
+/**
+ * The bowler picker.
+ *
+ * It used to hide anyone who could not bowl, which turned an ordinary rule
+ * into a mystery — especially after an undo, when the state has moved and the
+ * scorer is looking for a bowler he was watching a moment ago. Everyone in the
+ * side is listed now, with the reason underneath if he cannot take the ball.
+ */
 function BowlerSheet({
   db,
   state,
@@ -868,30 +878,58 @@ function BowlerSheet({
   onPick: (id: string) => void;
   onClose?: (() => void) | undefined;
 }) {
-  // R20b is intrinsic: he is simply not in the list.
-  const eligible = (
-    midOver
-      ? state.bowlingSquad.filter((id) => (state.bowlers[id]?.oversCompleted ?? 0) < rules.maxOversPerBowler)
-      : eligibleBowlers(state, rules)
-  ).sort((a, b) => playerName(db, a).localeCompare(playerName(db, b)));
+  const squad = [...state.bowlingSquad].sort((a, b) =>
+    playerName(db, a).localeCompare(playerName(db, b)),
+  );
+
   return (
     <Sheet title={midOver ? 'Replace the bowler mid-over' : 'Who bowls this over?'} onClose={onClose ?? (() => {})}>
-      <div className="hint" style={{ marginBottom: 10 }}>
-        {midOver
-          ? 'The replacement finishes the over. Balls already bowled stay with the original bowler.'
-          : `No two overs in a row, and ${rules.maxOversPerBowler} overs each at most.`}
-      </div>
+      {midOver && (
+        <div className="hint" style={{ marginBottom: 10 }}>
+          The replacement finishes the over. Balls already bowled stay with the original bowler.
+        </div>
+      )}
+
       <div className="grid3">
-        {eligible.map((id) => (
-          <Btn key={id} className="btn" style={{ fontSize: 13, padding: '12px 4px' }} onTap={() => onPick(id)}>
-            {playerName(db, id)}
-            <div className="sub" style={{ fontSize: 10, fontWeight: 400 }}>
-              {state.bowlers[id]?.oversCompleted ?? 0} ov
-            </div>
-          </Btn>
-        ))}
+        {squad.map((id) => {
+          const b = state.bowlers[id];
+          const overs = b?.oversCompleted ?? 0;
+          const cap = bowlerCapFor(state, id, rules);
+          const resting = midOver ? 0 : ballsUntilEligible(state, id, rules);
+          const capped = overs >= cap;
+          const why = capped
+            ? `${overs} over${overs === 1 ? '' : 's'} bowled`
+            : resting > 0
+              ? `resting ${resting} more ball${resting === 1 ? '' : 's'}`
+              : `${overs} over${overs === 1 ? '' : 's'}`;
+
+          return (
+            <Btn
+              key={id}
+              className="btn"
+              style={{ fontSize: 13, padding: '10px 4px' }}
+              disabled={capped || resting > 0}
+              onTap={() => onPick(id)}
+            >
+              {playerName(db, id)}
+              <div className="sub" style={{ fontSize: 10, fontWeight: 400, marginTop: 2 }}>
+                {why}
+              </div>
+            </Btn>
+          );
+        })}
       </div>
-      {eligible.length === 0 && <div className="note">Nobody is eligible — everyone has bowled their overs.</div>}
+
+      {squad.every((id) => {
+        const overs = state.bowlers[id]?.oversCompleted ?? 0;
+        return overs >= bowlerCapFor(state, id, rules) || (!midOver && ballsUntilEligible(state, id, rules) > 0);
+      }) && (
+        <div className="note" style={{ marginTop: 12, borderColor: 'var(--sodium-dim)' }}>
+          Nobody can take the ball: everyone has either bowled their overs or is still resting. If
+          the side is short of bowlers, turn on <b>Let one bowler bowl an extra over</b> in the
+          match settings.
+        </div>
+      )}
     </Sheet>
   );
 }

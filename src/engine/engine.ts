@@ -752,8 +752,20 @@ function applyDismissal(
   if (wasStriker) s.strikerId = null;
   else s.nonStrikerId = null;
 
-  // Who walks in: the scorer's pick, else the next un-batted player, else a
-  // retired-hurt man is NOT auto-recalled (that needs an explicit event, R27).
+  // Who walks in: the scorer's pick, else the next man in the order who has
+  // not batted. A retired-hurt man is NOT auto-recalled (R27).
+  //
+  // This used to keep a moving pointer into the batting order and jump it to
+  // whoever the scorer picked. Picking someone from lower down — which is
+  // normal, and likelier now the lists are alphabetical — left everyone above
+  // him unreachable, so a side of nine could be "all out" with men still to
+  // bat. Availability is a property of the batsman, so it is read off him.
+  const nextAvailable = (): string | null =>
+    s.battingOrder.find((id) => {
+      const b = s.batsmen[id];
+      return b !== undefined && !b.isOut && !b.hasBatted;
+    }) ?? null;
+
   let incoming: string | null = null;
   if (explicitNewBatsmanId) {
     const b = s.batsmen[explicitNewBatsmanId];
@@ -761,23 +773,16 @@ function applyDismissal(
     if (b.isOut) throw new EngineError('An out batsman never bats again', 'R27');
     incoming = explicitNewBatsmanId;
     b.isRetiredHurt = false;
-    const idx = s.battingOrder.indexOf(explicitNewBatsmanId);
-    if (idx >= s.nextBatsmanIndex) s.nextBatsmanIndex = idx + 1;
   } else {
-    while (s.nextBatsmanIndex < s.battingOrder.length) {
-      const candidate = s.battingOrder[s.nextBatsmanIndex] as string;
-      s.nextBatsmanIndex += 1;
-      const b = s.batsmen[candidate];
-      if (b && !b.isOut && !b.hasBatted) {
-        incoming = candidate;
-        break;
-      }
-    }
+    incoming = nextAvailable();
   }
 
   if (incoming) {
     const b = s.batsmen[incoming] as BatsmanState;
     b.hasBatted = true;
+    // Kept only so the shape of the state is unchanged; nothing reads it to
+    // decide who bats next any more.
+    s.nextBatsmanIndex = s.battingOrder.filter((id) => s.batsmen[id]?.hasBatted).length;
     if (wasStriker) s.strikerId = incoming;
     else s.nonStrikerId = incoming;
     return true;

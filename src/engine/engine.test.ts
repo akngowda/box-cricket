@@ -11,6 +11,8 @@ import {
   ballsUntilEligible,
   createInnings,
   currentOver,
+  ballsUntilEligible,
+  bowlerCapFor,
   eligibleBowlers,
   impactOverIsDefault,
   impactOverOf,
@@ -1089,3 +1091,110 @@ describe('R26 — correcting a mis-tapped batsman', () => {
     expect(s.batsmen.b1?.runs).toBe(4);
   });
 });
+
+describe('R28 — a side is only all out when nobody is left', () => {
+  it('picking a batsman from lower down the order does not strand the men above him', () => {
+    const r = DEFAULT_RULES;
+    const nine = ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9'];
+    let s = createInnings({
+      battingOrder: nine,
+      bowlingSquad: BOWL,
+      strikerId: 'b1',
+      nonStrikerId: 'b2',
+      bowlerId: 'o1',
+    });
+
+    // The scorer sends in the last man in the order first.
+    s = bowl(s, { wicket: { type: 'bowled', playerOutId: 'b1', newBatsmanId: 'b9' } }, r).state;
+    expect(s.strikerId).toBe('b9');
+    expect(s.status).toBe('in_progress');
+
+    // Everyone in between must still be available.
+    for (const next of ['b3', 'b4', 'b5', 'b6', 'b7']) {
+      s = bowlMany(s, [{ wicket: { type: 'bowled', newBatsmanId: next } }], r).state;
+      expect(s.status).toBe('in_progress');
+    }
+
+    // Seven down, two at the crease: still batting.
+    expect(s.wickets).toBe(6);
+    s = bowlMany(s, [{ wicket: { type: 'bowled', newBatsmanId: 'b8' } }], r).state;
+    expect(s.wickets).toBe(7);
+    expect(s.status).toBe('in_progress');
+
+    // The eighth wicket is the last: nine players, eight out, nobody to come.
+    s = bowlMany(s, [{ wicket: { type: 'bowled' } }], r).state;
+    expect(s.wickets).toBe(8);
+    expect(s.status).toBe('complete');
+    expect(s.endReason).toBe('all_out');
+  });
+
+  it('with nobody named, the next man in the order walks in', () => {
+    const r = DEFAULT_RULES;
+    const s = bowl(innings(), { wicket: { type: 'bowled' } }, r).state;
+    expect(s.strikerId).toBe('b3');
+  });
+});
+
+describe('R24 / R28 — how many wickets a side of nine has', () => {
+  const nine = ['b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9'];
+
+  const allOutAfter = (lastManEnabled: boolean): number => {
+    const r = DEFAULT_RULES;
+    let s = createInnings({
+      battingOrder: nine,
+      bowlingSquad: BOWL,
+      strikerId: 'b1',
+      nonStrikerId: 'b2',
+      bowlerId: 'o1',
+      lastManEnabled,
+    });
+    let balls = 0;
+    while (s.status === 'in_progress' && balls < 60) {
+      s = bowlMany(s, [{ wicket: { type: 'bowled' } }], r).state;
+      balls += 1;
+    }
+    return s.wickets;
+  };
+
+  it('nine batsmen and no last man: eight wickets', () => {
+    expect(allOutAfter(false)).toBe(8);
+  });
+
+  it('nine batsmen with last man on: nine wickets', () => {
+    expect(allOutAfter(true)).toBe(9);
+  });
+});
+
+describe('R20 — undoing balls gives the bowler his over back', () => {
+  it('a bowler part-way through an over is still the bowler after an undo', () => {
+    const r = DEFAULT_RULES;
+    const init = {
+      battingOrder: BAT,
+      bowlingSquad: BOWL,
+      strikerId: 'b1',
+      nonStrikerId: 'b2',
+      bowlerId: 'o1',
+    };
+    // o1 bowls a full over.
+    const log: StoredDelivery[] = Array.from({ length: 6 }, (_, i) => ({
+      id: `x${i}`,
+      seq: i + 1,
+      bowlerId: 'o1',
+    }));
+
+    const done = replayInnings(log, r, init).state;
+    expect(done.bowlers.o1?.oversCompleted).toBe(1);
+    // Having just bowled, he must rest before the next over.
+    expect(ballsUntilEligible(done, 'o1', r)).toBe(r.ballsPerOver);
+
+    // Undo the last ball: the over is no longer complete, and it is still his.
+    const undone = replayInnings(voidLastDelivery(log), r, init).state;
+    expect(undone.legalBalls).toBe(5);
+    expect(undone.bowlers.o1?.oversCompleted).toBe(0);
+    expect(undone.currentBowlerId).toBe('o1');
+    // And his allowance is intact — this is what "already bowled his overs"
+    // was wrongly reporting.
+    expect(bowlerCapFor(undone, 'o1', r)).toBe(r.maxOversPerBowler);
+    expect(undone.bowlers.o1?.oversCompleted).toBeLessThan(r.maxOversPerBowler);
+  });
+})
