@@ -158,8 +158,8 @@ const SECTIONS: Array<{ title: string; body: React.ReactNode }> = [
     title: 'Wides, no balls and free hits',
     body: (
       <p>
-        A wide is one run and re-bowled — a dead ball, so nothing can be scored off it and the
-        only way out is stumped. A no ball is two runs plus whatever is scored, re-bowled, and the
+        A wide is one run and re-bowled — a dead ball, so nothing can be scored off it. The only
+        ways out are stumped, or hit wicket if he knocks the stumps over reaching for it. A no ball is two runs plus whatever is scored, re-bowled, and the
         only way out is a run out. The next legal ball after a no ball is a free hit, where a run
         out is the only way to lose your wicket. If that free hit is itself a wide or a no ball,
         the free hit carries over to the next one.

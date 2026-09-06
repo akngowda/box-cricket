@@ -116,6 +116,8 @@ export interface Scoreboard {
   state: InningsState;
   results: DeliveryResult[];
   error: string | null;
+  /** Instructions that no longer apply — skipped, never fatal. */
+  skipped: Array<{ seq: number; type: string; reason: string }>;
 }
 
 export function scoreboard(db: DB, innings: InningsRow, rules: RulesConfig): Scoreboard | null {
@@ -123,9 +125,9 @@ export function scoreboard(db: DB, innings: InningsRow, rules: RulesConfig): Sco
   if (!init) return null;
   try {
     const out = replayTimeline(inningsTimeline(db, innings.id), rules, init);
-    return { state: out.state, results: out.results, error: null };
+    return { state: out.state, results: out.results, error: null, skipped: out.skipped };
   } catch (err) {
-    return { state: null as never, results: [], error: (err as Error).message };
+    return { state: null as never, results: [], error: (err as Error).message, skipped: [] };
   }
 }
 

@@ -554,6 +554,8 @@ function TossSheet({ match, onClose }: { match: MatchRow; onClose: () => void })
               <div className="sub">
                 {squadName(db, live.toss_calling_squad_id)} spun · {squadName(db, opposing)} called{' '}
                 {live.toss_call ?? '—'}
+                {live.toss_call &&
+                  ` — ${live.toss_call === live.toss_result ? 'called it right' : 'called it wrong'}`}
               </div>
             </div>
           )}

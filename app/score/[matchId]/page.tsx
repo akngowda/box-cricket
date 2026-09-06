@@ -68,11 +68,41 @@ interface Selection {
 }
 const EMPTY: Selection = { declared: null, contact: 'none', phys: 0, extra: 'none', dot: false, body: false };
 
+/**
+ * Force a selection to be a legal one.
+ *
+ * Greying keys out is a hint, not a guarantee: the ordering of taps, a
+ * re-render, or a stale press can still leave two things set that cannot both
+ * be true — a wide with a run off the bat, say, which the engine would then
+ * refuse at commit. So every change goes through here and the impossible parts
+ * are dropped, whichever way round they were tapped.
+ */
+function legal(sel: Selection): Selection {
+  // A wide is a dead ball: nothing off the bat, nothing run, nothing else.
+  if (sel.extra === 'wide') {
+    return { ...EMPTY, extra: 'wide' };
+  }
+  // A body hit is 0 off the bat and always a dot.
+  if (sel.body) {
+    return { ...EMPTY, body: true, dot: true, extra: 'none' };
+  }
+  // A dot is nothing at all.
+  if (sel.dot) {
+    return { ...EMPTY, dot: true };
+  }
+  // Declared runs must belong to the row they were tapped on.
+  if (sel.declared === null && sel.contact !== 'none') {
+    return { ...sel, contact: 'none' };
+  }
+  return sel;
+}
+
 const WICKET_LABEL: Record<WicketType, string> = {
   bowled: 'Bowled',
   caught: 'Caught',
   runout: 'Run out',
   stumped: 'Stumped',
+  hitwicket: 'Hit wicket',
   dotout: 'Dot out',
   bodyout: 'Body out',
   retired_out: 'Retired out',
@@ -107,10 +137,14 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const current =
     [...innings].reverse().find((i) => i.status === 'in_progress') ?? innings[innings.length - 1];
 
-  const [sel, setSel] = useState<Selection>(EMPTY);
+  const [rawSel, setRawSel] = useState<Selection>(EMPTY);
+  const sel = legal(rawSel);
+  const setSel = (next: Selection | ((s: Selection) => Selection)): void =>
+    setRawSel((current) => legal(typeof next === 'function' ? next(legal(current)) : next));
   const [sheet, setSheet] = useState<SheetName>('none');
   const [audio, setAudio] = useState(rules.audioPerBall);
   const [fixing, setFixing] = useState<string | null>(null);
+  const [fixingDots, setFixingDots] = useState<string | null>(null);
   const [autoIn, setAutoIn] = useState<string | null>(null);
   const spoken = useRef<string | null>(null);
 
@@ -259,7 +293,9 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             <Link href="/" className="back" style={{ textDecoration: 'none', marginRight: 6 }}>
               ‹
             </Link>
-            <span className="tcode">{squadCode(db, current.batting_squad_id)}</span>{' '}
+            <span className="tcode" style={{ fontSize: 15 }}>
+              {squadName(db, current.batting_squad_id)}
+            </span>{' '}
             <span className="score mid">
               {state.runs}/{state.wickets}
             </span>{' '}
@@ -303,17 +339,23 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
         <>
           <div className="banner last">
             ✕ {preview.wicket.type === 'dotout' ? '3rd straight dot' : '3rd body hit'} —{' '}
-            {playerName(db, preview.wicket.playerOutId)} is OUT ({WICKET_LABEL[preview.wicket.type]})
+            {playerName(db, preview.wicket.playerOutId)} <b>will be out</b> when you save (
+            {WICKET_LABEL[preview.wicket.type]})
           </div>
           <div className="pad" style={{ paddingTop: 8 }}>
             <div className="lbl" style={{ margin: '0 0 4px' }}>Who comes in?</div>
-            <div className="grid3">
+            <select
+              className="field"
+              value={autoIn ?? ''}
+              onChange={(e) => setAutoIn(e.target.value || null)}
+            >
+              <option value="">Next in the order</option>
               {availableBatsmen.map((id) => (
-                <Opt key={id} on={autoIn === id} onTap={() => setAutoIn(id)} style={{ fontSize: 12 }}>
+                <option key={id} value={id}>
                   {playerName(db, id)}
-                </Opt>
+                </option>
               ))}
-            </div>
+            </select>
           </div>
         </>
       )}
@@ -329,6 +371,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
               state={state}
               note="on strike"
               onFix={() => setFixing(state.strikerId)}
+              onFixDots={() => setFixingDots(state.strikerId)}
             />
             <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)' }} />
             <BatCell
@@ -338,6 +381,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
               note={state.lastManActive ? 'other end' : ''}
               align="right"
               onFix={() => setFixing(state.nonStrikerId)}
+              onFixDots={() => setFixingDots(state.nonStrikerId)}
             />
           </div>
         </div>
@@ -436,10 +480,16 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
               onTap={() => setSel((s) => ({ ...s, phys: Math.min(9, s.phys + 1) }))}
               onHold={() => setSel((s) => ({ ...s, phys: 0 }))}
             >
-              {sel.phys > 0 ? `+${sel.phys}` : '+'}
-              <small>{sel.phys > 0 ? 'tap to add · hold to clear' : 'tap once per run'}</small>
+              {/* The ends speak for themselves: plus this side, minus the
+                  other, count in the middle. */}
+              <span className="pitch-add">+</span>
+
+              <span className="pitch-count">
+                {sel.phys}
+                <span>{sel.phys === 1 ? 'run' : 'runs'} · tap once per run</span>
+              </span>
               <button
-                className="k-minus"
+                className={`k-minus ${sel.phys > 0 && !dis.runs ? 'live' : ''}`}
                 disabled={sel.phys === 0 || dis.runs}
                 aria-label="one run fewer"
                 onPointerDown={(e) => {
@@ -481,17 +531,23 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
               (state.impactOverNumber === null ? (
                 <Key
                   disabled={inOver > 0 || over >= rules.oversPerInnings - 1}
-                  onTap={() => event('impact_over_declared', { overNo: inOver > 0 ? over + 1 : over })}
+                  onTap={() => event('impact_over_declared', { overNo: over })}
                 >
-                  Impact over<small>over {over + 1}</small>
+                  Impact over
+                  <small>{inOver > 0 ? 'between overs only' : `over ${over + 1}`}</small>
                 </Key>
               ) : (
                 <Key
                   on
-                  disabled={state.impactOverNumber < over || (state.impactOverNumber === over && inOver > 0)}
+                  // Once an over is under way the declaration is settled, for
+                  // that over and for any other: it cannot be moved mid-over.
+                  disabled={inOver > 0 || state.impactOverNumber < over}
                   onTap={() => event('impact_over_undone')}
                 >
-                  Undo impact<small>over {state.impactOverNumber + 1}</small>
+                  Undo impact
+                  <small>
+                    {inOver > 0 ? 'between overs only' : `over ${state.impactOverNumber + 1}`}
+                  </small>
                 </Key>
               ))}
 
@@ -541,12 +597,17 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
               <b>Who stands at the other end?</b> He does not run for{' '}
               {playerName(db, state.strikerId)} — he holds the non-striker&apos;s end, so a run out
               is on at both ends.
-              <div className="grid3" style={{ marginTop: 9 }}>
+              <div className="grid2" style={{ marginTop: 9 }}>
                 {squadMembers(db, current.batting_squad_id)
                   .filter((p) => p.id !== state.strikerId)
                   .slice(0, 6)
                   .map((p) => (
-                    <Btn key={p.id} className="btn" style={{ fontSize: 12, padding: '9px 4px' }} onTap={() => event('deadrunner_set', { playerId: p.id })}>
+                    <Btn
+                      key={p.id}
+                      className="btn"
+                      style={{ fontSize: 18, padding: '11px 6px', minHeight: 58 }}
+                      onTap={() => event('deadrunner_set', { playerId: p.id })}
+                    >
                       {p.name}
                     </Btn>
                   ))}
@@ -597,7 +658,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             {playerName(db, preview.wicket.playerOutId)} is out. Pick the next batsman and the ball
             is scored.
           </div>
-          <div className="grid3">
+          <div style={{ display: 'grid', gap: 7 }}>
             {availableBatsmen.map((id) => (
               <Opt
                 key={id}
@@ -605,7 +666,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
                   setAutoIn(id);
                   commit(undefined, id);
                 }}
-                style={{ fontSize: 12 }}
+                style={{ fontSize: 18, minHeight: 58 }}
               >
                 {playerName(db, id)}
               </Opt>
@@ -641,6 +702,37 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
           onClose={() => setSheet('none')}
           onConfirm={(w) => commit(w)}
         />
+      )}
+
+      {fixingDots && (
+        <Sheet title={`Dots against ${playerName(db, fixingDots)}`} onClose={() => setFixingDots(null)}>
+          <div className="hint" style={{ marginBottom: 12 }}>
+            He is on <b>{state.batsmen[fixingDots]?.dotStreak ?? 0}</b> in a row. A dot added by
+            mistake would dismiss him at{' '}
+            {rules.dotsToOut}, so set the real count here.
+          </div>
+          <div className="grid3">
+            {Array.from({ length: rules.dotsToOut }, (_, n) => n).map((n) => (
+              <Opt
+                key={n}
+                on={(state.batsmen[fixingDots]?.dotStreak ?? 0) === n}
+                style={{ fontSize: 20, minHeight: 58 }}
+                onTap={() => {
+                  event('dot_count_set', { playerId: fixingDots, dots: n });
+                  setFixingDots(null);
+                }}
+              >
+                {n}
+                <small>{n === 1 ? 'dot' : 'dots'}</small>
+              </Opt>
+            ))}
+          </div>
+          {rules.threeDotOut ? null : (
+            <div className="note" style={{ marginTop: 12 }}>
+              The three-dot rule is off in this match, so the count does not dismiss anybody.
+            </div>
+          )}
+        </Sheet>
       )}
 
       {fixing && (
@@ -767,6 +859,7 @@ function BatCell({
   note,
   align = 'left',
   onFix,
+  onFixDots,
 }: {
   db: DB;
   id: string | null;
@@ -774,6 +867,7 @@ function BatCell({
   note: string;
   align?: 'left' | 'right';
   onFix: () => void;
+  onFixDots: () => void;
 }) {
   if (!id) return <div style={{ flex: 1 }} />;
   const b = state.batsmen[id];
@@ -789,10 +883,19 @@ function BatCell({
           <span style={{ fontSize: 12, color: 'var(--muted)' }}> ({b?.ballsFaced ?? 0})</span>
         </span>
       </div>
-      <div className="hist" style={{ justifyContent: right ? 'flex-end' : 'flex-start' }}>
+      {/* The pips are the dot counter. Tapping them is how a wrong one gets
+          put right, before it dismisses somebody who does not deserve it. */}
+      <div
+        className="hist"
+        style={{ justifyContent: right ? 'flex-end' : 'flex-start', minHeight: 16, cursor: 'pointer' }}
+        {...tapProps(onFixDots)}
+      >
         {(b?.ballHistory ?? []).slice(-6).map((pip, i) => (
           <i key={i} className={pip === 'scored' ? 'g' : pip === 'body' ? 'b' : 'd'} />
         ))}
+        {(b?.ballHistory ?? []).length === 0 && (
+          <span className="sub" style={{ fontSize: 9.5 }}>no balls faced</span>
+        )}
       </div>
     </div>
   );
@@ -821,9 +924,9 @@ function FixBatsman({
         For a mis-tap: this puts someone else at the crease from here on. Runs already scored stay
         with whoever they were credited to — undo the ball instead if they went to the wrong man.
       </div>
-      <div className="grid3">
+      <div className="grid2">
         {choices.map((id) => (
-          <Opt key={id} onTap={() => onPick(id)} style={{ fontSize: 12 }}>
+          <Opt key={id} onTap={() => onPick(id)} style={{ fontSize: 18, minHeight: 58 }}>
             {playerName(db, id)}
           </Opt>
         ))}
@@ -898,7 +1001,7 @@ function BowlerSheet({
         </div>
       )}
 
-      <div className="grid3">
+      <div className="grid2">
         {squad.map((id) => {
           const b = state.bowlers[id];
           const overs = b?.oversCompleted ?? 0;
@@ -915,7 +1018,7 @@ function BowlerSheet({
             <Btn
               key={id}
               className="btn"
-              style={{ fontSize: 13, padding: '10px 4px' }}
+              style={{ fontSize: 18, fontWeight: 600, padding: '12px 6px', minHeight: 62 }}
               disabled={capped || resting > 0}
               onTap={() => onPick(id)}
             >
@@ -966,10 +1069,10 @@ function WicketSheet({
   const scored = sel.declared !== null || sel.phys > 0;
   const allowed: WicketType[] =
     sel.extra === 'wide'
-      ? ['stumped']
+      ? ['stumped', 'hitwicket']
       : sel.extra === 'noball' || state.isFreeHit || scored
         ? ['runout']
-        : ['bowled', 'caught', 'runout', 'stumped', 'retired_out', 'retired_hurt'];
+        : ['bowled', 'caught', 'runout', 'stumped', 'hitwicket', 'retired_out', 'retired_hurt'];
 
   const atCrease = [state.strikerId, state.nonStrikerId].filter((x): x is string => x !== null);
   const available = state.battingOrder
@@ -986,14 +1089,16 @@ function WicketSheet({
     <Sheet title="Wicket" onClose={onClose}>
       <div className="grid3">
         {allowed.map((t) => (
-          <Opt key={t} on={type === t} onTap={() => setType(t)} style={{ fontSize: 12 }}>
+          <Opt key={t} on={type === t} onTap={() => setType(t)} style={{ fontSize: 12.5 }}>
             {WICKET_LABEL[t]}
           </Opt>
         ))}
       </div>
 
       {sel.extra === 'wide' && (
-        <div className="hint" style={{ marginTop: 10 }}>A wide allows a stumping and nothing else.</div>
+        <div className="hint" style={{ marginTop: 10 }}>
+          On a wide he can be stumped, or hit his own wicket reaching for it. Nothing else.
+        </div>
       )}
       {sel.extra === 'noball' && (
         <div className="hint" style={{ marginTop: 10 }}>Only a run out is possible on a no-ball, and the runs still count.</div>
@@ -1009,9 +1114,9 @@ function WicketSheet({
       )}
 
       <div className="lbl">Who is out</div>
-      <div className="grid2">
+      <div style={{ display: 'grid', gap: 7 }}>
         {atCrease.map((id) => (
-          <Opt key={id} on={outId === id} onTap={() => setOutId(id)} style={{ fontSize: 13 }}>
+          <Opt key={id} on={outId === id} onTap={() => setOutId(id)} style={{ fontSize: 18, minHeight: 58 }}>
             {playerName(db, id)}
           </Opt>
         ))}
@@ -1019,32 +1124,32 @@ function WicketSheet({
 
       {(type === 'caught' || type === 'runout' || type === 'stumped') && (
         <>
-          <div className="lbl">Fielder</div>
-          <div className="grid3">
-            {squadMembers(db, innings.bowling_squad_id).map((p) => (
-              <Opt
-                key={p.id}
-                on={fielderId === p.id}
-                onTap={() => setFielderId(fielderId === p.id ? '' : p.id)}
-                style={{ fontSize: 12 }}
-              >
-                {p.name}
-              </Opt>
-            ))}
+          <div className="lbl">
+            {type === 'caught' ? 'Caught by' : type === 'stumped' ? 'Stumped by' : 'Run out by'}
           </div>
+          {/* A dropdown, full width: eleven names three-to-a-row was the
+              hardest thing on this sheet to pick from in a hurry. */}
+          <select className="field" value={fielderId} onChange={(e) => setFielderId(e.target.value)}>
+            <option value="">Nobody recorded</option>
+            {squadMembers(db, innings.bowling_squad_id).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </>
       )}
 
       {available.length > 0 && type !== 'retired_hurt' && (
         <>
           <div className="lbl">New batsman</div>
-          <div className="grid3">
+          <select className="field" value={newId} onChange={(e) => setNewId(e.target.value)}>
             {available.map((id) => (
-              <Opt key={id} on={newId === id} onTap={() => setNewId(id)} style={{ fontSize: 12 }}>
+              <option key={id} value={id}>
                 {playerName(db, id)}
-              </Opt>
+              </option>
             ))}
-          </div>
+          </select>
         </>
       )}
 
@@ -1053,10 +1158,10 @@ function WicketSheet({
         <>
           <div className="lbl">Does the new batsman take strike?</div>
           <div className="grid2">
-            <Opt on={onStrike} onTap={() => setOnStrike(true)} style={{ fontSize: 12 }}>
+            <Opt on={onStrike} onTap={() => setOnStrike(true)} style={{ fontSize: 16, minHeight: 56 }}>
               Yes, on strike
             </Opt>
-            <Opt on={!onStrike} onTap={() => setOnStrike(false)} style={{ fontSize: 12 }}>
+            <Opt on={!onStrike} onTap={() => setOnStrike(false)} style={{ fontSize: 16, minHeight: 56 }}>
               No, other end
             </Opt>
           </div>
@@ -1064,11 +1169,12 @@ function WicketSheet({
       )}
 
       <div className="grid2" style={{ marginTop: 14 }}>
-        <Btn className="btn ghost" onTap={onClose}>
+        <Btn className="btn ghost" style={{ fontSize: 17, minHeight: 58 }} onTap={onClose}>
           Cancel
         </Btn>
         <Btn
           className="btn danger"
+          style={{ fontSize: 17, fontWeight: 700, minHeight: 58 }}
           buzz={[30, 50, 30]}
           onTap={() =>
             onConfirm({
@@ -1175,14 +1281,22 @@ function StartInnings({ db, match, innings }: { db: DB; match: MatchRow; innings
           </div>
         )}
 
-        <div className="lbl">
+        {/* Two to a row, not three: a full name in a third of a phone is a
+            squint, and this is the screen where picking the wrong man costs
+            you the whole innings. */}
+        <div className="lbl" style={{ fontSize: 13 }}>
           The two opening batsmen — <b>first tapped takes strike</b>
         </div>
-        <div className="grid3">
+        <div className="grid2">
           {batting.map((p) => {
             const at = openers.indexOf(p.id);
             return (
-              <Opt key={p.id} on={at >= 0} onTap={() => pick(p.id)} style={{ fontSize: 12 }}>
+              <Opt
+                key={p.id}
+                on={at >= 0}
+                onTap={() => pick(p.id)}
+                style={{ fontSize: 18, minHeight: 60 }}
+              >
                 {p.name}
                 {at === 0 && <small>on strike</small>}
                 {at === 1 && <small>other end</small>}
@@ -1191,10 +1305,15 @@ function StartInnings({ db, match, innings }: { db: DB; match: MatchRow; innings
           })}
         </div>
 
-        <div className="lbl">Opening bowler</div>
-        <div className="grid3">
+        <div className="lbl" style={{ fontSize: 13 }}>Opening bowler</div>
+        <div className="grid2">
           {bowling.map((p) => (
-            <Opt key={p.id} on={bowler === p.id} onTap={() => setBowler(p.id)} style={{ fontSize: 12 }}>
+            <Opt
+              key={p.id}
+              on={bowler === p.id}
+              onTap={() => setBowler(p.id)}
+              style={{ fontSize: 18, minHeight: 60 }}
+            >
               {p.name}
             </Opt>
           ))}
@@ -1214,11 +1333,13 @@ function StartInnings({ db, match, innings }: { db: DB; match: MatchRow; innings
             )
           }
         >
-          {openers.length < 2
-            ? `Pick ${2 - openers.length} more batsman${openers.length === 1 ? '' : 'men'}`
-            : bowler === ''
-              ? 'Pick the opening bowler'
-              : 'Start the innings'}
+          {openers.length === 0
+            ? 'Pick the two opening batsmen'
+            : openers.length === 1
+              ? 'Pick one more batsman'
+              : bowler === ''
+                ? 'Pick the opening bowler'
+                : 'Start the innings'}
         </Btn>
       </div>
     </div>

@@ -20,6 +20,7 @@ const OUT_LABEL: Record<WicketType, string> = {
   caught: 'c',
   runout: 'run out',
   stumped: 'st',
+  hitwicket: 'hit wkt',
   dotout: 'dot out',
   bodyout: 'body out',
   retired_out: 'retired out',

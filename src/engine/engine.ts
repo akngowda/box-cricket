@@ -225,13 +225,23 @@ export function applyEvent(
       return s;
     }
 
-    // R20e — undoable while no ball of it has been bowled, and saved for later.
+    /**
+     * R20e — the declaration can be taken back only while the over is fresh.
+     *
+     * Once a ball has been bowled it is settled: the runs on it were doubled
+     * or they were not, and moving the declaration afterwards would rewrite
+     * what already happened. Undoing those balls makes the over fresh again,
+     * and then it can be taken back — which is the honest way round, because
+     * the log is what decides.
+     */
     case 'impact_over_undone': {
       if (s.impactOverNumber === null) return s;
       const over = currentOver(s, rules);
-      const started = ballsInCurrentOver(s, rules) > 0;
-      if (s.impactOverNumber < over || (s.impactOverNumber === over && started)) {
-        throw new EngineError('That impact over has already begun', 'R20e');
+      if (ballsInCurrentOver(s, rules) > 0) {
+        throw new EngineError('An over is under way — undo its balls first', 'R20e');
+      }
+      if (s.impactOverNumber < over) {
+        throw new EngineError('That impact over has already been bowled', 'R20e');
       }
       s.impactOverNumber = null;
       return s;
@@ -368,6 +378,7 @@ const BOWLER_CREDITED: ReadonlySet<WicketType> = new Set<WicketType>([
   'bowled',
   'caught',
   'stumped',
+  'hitwicket',
   'dotout',
   'bodyout',
 ]);
@@ -386,14 +397,15 @@ function validate(state: InningsState, input: DeliveryInput, rules: RulesConfig)
   }
   if (declared !== 0) zoneFor(declared, input.contact ?? 'none'); // throws if the row is wrong
 
-  // R10 — a wide has no zone, no physical runs, no body, and only a stumping.
+  // R10 — a wide has no zone, no physical runs and no body. He can still be
+  // stumped, and he can still knock his own stumps over reaching for it.
   if (extra === 'wide') {
     if (declared !== 0 || physical !== 0) {
       throw new EngineError('A wide carries no runs off the bat', 'R10');
     }
     if (body) throw new EngineError('Body cannot be marked on a wide', 'R7b');
-    if (wicket && wicket.type !== 'stumped') {
-      throw new EngineError('Stumped is the only wicket allowed on a wide', 'R10');
+    if (wicket && wicket.type !== 'stumped' && wicket.type !== 'hitwicket') {
+      throw new EngineError('Only stumped or hit wicket are possible on a wide', 'R10');
     }
   }
 
@@ -862,6 +874,7 @@ const WICKET_WORDS: Record<WicketType, string> = {
   caught: 'caught',
   runout: 'run out',
   stumped: 'stumped',
+  hitwicket: 'hit wicket',
   dotout: 'dot out',
   bodyout: 'body out',
   retired_out: 'retired out',
@@ -912,6 +925,9 @@ function announce(
         break;
       case 'stumped':
         parts.push('batsman stumped out');
+        break;
+      case 'hitwicket':
+        parts.push('batsman hit wicket');
         break;
       case 'retired_out':
         parts.push('batsman retired out');

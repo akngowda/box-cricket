@@ -25,7 +25,9 @@ import {
   recordSpin,
   removeFromSquad,
   setLastMan,
+  squadCode,
   squadMembers,
+  squadName,
   startSecondInnings,
   voidLastBall,
   type DB,
@@ -80,8 +82,9 @@ function setUp(overrides: Partial<RulesConfig> = {}, sizes: [number, number] = [
 /** The toss, then the openers — exactly what the two screens write. */
 function startInnings(db: DB, matchId: string, rules: RulesConfig): DB {
   const match = db.matches.find((m) => m.id === matchId)!;
-  db = recordSpin(db, matchId, match.squad_a_id!, 'heads');
-  db = recordCall(db, matchId, 'heads'); // the caller called right: squad A won
+  // Squad B spins, so squad A calls — and calls right, so squad A wins it.
+  db = recordSpin(db, matchId, match.squad_b_id!, 'heads');
+  db = recordCall(db, matchId, 'heads');
   db = recordDecision(db, matchId, 'bat', rules);
   const innings = db.innings.find((i) => i.match_id === matchId)!;
   const batting = squadMembers(db, innings.batting_squad_id);
@@ -142,11 +145,18 @@ describe('R3 / R2 — the toss', () => {
     expect(stored.toss_winner_squad_id).toBeNull();
   });
 
-  it('R3 — a wrong call hands the toss to the other side', () => {
+  it('R3 — the side that CALLS wins it by calling right, and loses it by calling wrong', () => {
     const { db, matchId, squadA, squadB } = setUp();
-    let after = recordSpin(db, matchId, squadA.id, 'tails');
-    after = recordCall(after, matchId, 'heads'); // called wrong
-    expect(after.matches.find((m) => m.id === matchId)!.toss_winner_squad_id).toBe(squadB.id);
+
+    // A spins, so B calls. B calls wrong: A wins the toss.
+    let wrong = recordSpin(db, matchId, squadA.id, 'tails');
+    wrong = recordCall(wrong, matchId, 'heads');
+    expect(wrong.matches.find((m) => m.id === matchId)!.toss_winner_squad_id).toBe(squadA.id);
+
+    // Same spin, B calls right: B wins it.
+    let right = recordSpin(db, matchId, squadA.id, 'tails');
+    right = recordCall(right, matchId, 'tails');
+    expect(right.matches.find((m) => m.id === matchId)!.toss_winner_squad_id).toBe(squadB.id);
   });
 
   it('R2 — the decision freezes the effective config and opens innings 1', () => {
@@ -329,5 +339,26 @@ describe('test cricket stays out of the record', () => {
     expect(
       playerStats(asTest, asTest.series[0]!.id, true).find((p) => p.playerId === striker)?.runs,
     ).toBe(6);
+  });
+});
+
+describe('team codes', () => {
+  it('a multi-word name becomes initials, not its first three letters', () => {
+    const base = setUp().db;
+    const withTeams: DB = {
+      ...base,
+      jerseys: [
+        { ...base.jerseys[0]!, id: 'jA', name: 'Team Akarsh' },
+        { ...base.jerseys[1]!, id: 'jB', name: 'Strikers' },
+      ],
+      squads: [
+        { ...base.squads[0]!, jersey_id: 'jA' },
+        { ...base.squads[1]!, jersey_id: 'jB' },
+      ],
+    };
+    // "Team Akarsh" was reading as "TEA".
+    expect(squadCode(withTeams, withTeams.squads[0]!.id)).toBe('AKA');
+    expect(squadCode(withTeams, withTeams.squads[1]!.id)).toBe('STR');
+    expect(squadName(withTeams, withTeams.squads[0]!.id)).toBe('Team Akarsh');
   });
 });

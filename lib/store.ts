@@ -292,7 +292,7 @@ export function addJersey(db: DB, name: string, colour: string): DB {
       {
         id: uid(),
         name: name.trim(),
-        short_name: name.trim().slice(0, 3).toUpperCase(),
+        short_name: null,
         colour_hex: colour,
         logo_url: null,
         deleted_at: null,
@@ -433,10 +433,25 @@ export function squadName(db: DB, squadId: string | null): string {
   return db.jerseys.find((j) => j.id === squad.jersey_id)?.name ?? 'No team set';
 }
 
+/**
+ * A short code for a team, for the places a full name will not fit.
+ *
+ * Chopping the first three letters gave "Team Akarsh" -> "TEA", which tells
+ * you nothing and reads like a typo. Multi-word names become initials, and a
+ * single word keeps its first three letters.
+ */
 export function squadCode(db: DB, squadId: string | null): string {
   const squad = db.squads.find((s) => s.id === squadId);
   const jersey = db.jerseys.find((j) => j.id === squad?.jersey_id);
-  return jersey?.short_name ?? jersey?.name.slice(0, 3).toUpperCase() ?? '—';
+  if (!jersey) return '—';
+
+  const words = jersey.name.trim().split(/\s+/).filter(Boolean);
+  // "Team X" is really just X — the word "team" carries no information.
+  const meaningful = words.filter((w) => w.toLowerCase() !== 'team');
+  const parts = meaningful.length > 0 ? meaningful : words;
+
+  if (parts.length > 1) return parts.map((w) => w[0] ?? '').join('').toUpperCase().slice(0, 4);
+  return (parts[0] ?? jersey.name).slice(0, 3).toUpperCase();
 }
 
 export function playerName(db: DB, id: string | null | undefined): string {
@@ -513,9 +528,14 @@ export function recordSpin(
 export function recordCall(db: DB, matchId: string, call: 'heads' | 'tails'): DB {
   const match = db.matches.find((m) => m.id === matchId);
   if (!match || !match.toss_result || !match.toss_calling_squad_id) return db;
-  const caller = match.toss_calling_squad_id;
-  const other = match.squad_a_id === caller ? match.squad_b_id : match.squad_a_id;
-  const winner = call === match.toss_result ? caller : other;
+
+  // toss_calling_squad_id holds the side that SPINS the coin. The other side
+  // calls it, so the call belongs to them — and a correct call wins them the
+  // toss. This was the wrong way round: a correct call handed the toss to the
+  // spinner, so the side that called right lost it.
+  const spinner = match.toss_calling_squad_id;
+  const callingSide = match.squad_a_id === spinner ? match.squad_b_id : match.squad_a_id;
+  const winner = call === match.toss_result ? callingSide : spinner;
   return logActivity(
     {
       ...db,
@@ -524,7 +544,9 @@ export function recordCall(db: DB, matchId: string, call: 'heads' | 'tails'): DB
       ),
     },
     'toss_called',
-    `called ${call} — ${winner ? squadNameOf(db, winner) : 'nobody'} won the toss`,
+    `${squadNameOf(db, callingSide ?? '')} called ${call}, it was ${match.toss_result} — ${
+      winner ? squadNameOf(db, winner) : 'nobody'
+    } won the toss`,
   );
 }
 

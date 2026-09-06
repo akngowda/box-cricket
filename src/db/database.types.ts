@@ -176,6 +176,7 @@ export interface DeliveryRow {
     | 'caught'
     | 'runout'
     | 'stumped'
+    | 'hitwicket'
     | 'dotout'
     | 'bodyout'
     | 'retired_out'

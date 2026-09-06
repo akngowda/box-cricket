@@ -28,6 +28,7 @@ export type WicketType =
   | 'caught'
   | 'runout'
   | 'stumped'
+  | 'hitwicket'
   | 'dotout'
   | 'bodyout'
   | 'retired_out'

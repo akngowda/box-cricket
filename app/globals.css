@@ -303,6 +303,15 @@ body {
   font-family: inherit;
 }
 
+/* Choosing a player is the one place a misread costs you the scorecard, so
+   names are set larger than anything else in a sheet. */
+select.field {
+  font-size: 19px;
+  font-weight: 600;
+  padding: 15px 13px;
+  min-height: 58px;
+}
+
 .lbl {
   font-size: 11px;
   color: var(--muted);
@@ -434,6 +443,11 @@ body {
   color: #150e00;
   border-color: var(--sodium);
 }
+.opt {
+  overflow-wrap: anywhere;
+  line-height: 1.15;
+}
+
 .opt small,
 .declbtn small,
 .physbtn small {
@@ -741,27 +755,82 @@ td b {
   border-color: #46c191;
 }
 
-/* Minus, for a thumb that tapped once too often. */
+/* The pitch, read the way you stand on it: the batting end on the left where
+   the runs are added, the count in the middle, and the bowler's end on the
+   right where a run is taken back. Tapping anywhere on the strip except the
+   bowler's end adds one. */
+.k.pitch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 0 14px;
+  gap: 8px;
+}
+
+.pitch-add {
+  font-family: var(--font-num), Impact, sans-serif;
+  font-size: 30px;
+  line-height: 1;
+  opacity: 0.9;
+}
+.pitch-count {
+  flex: 1;
+  text-align: center;
+  font-family: var(--font-num), Impact, sans-serif;
+  font-size: 34px;
+  line-height: 1;
+}
+.pitch-count span {
+  display: block;
+  font-family: var(--font-ui), system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 500;
+  opacity: 0.6;
+  margin-top: 1px;
+}
+
 .k-minus {
   position: absolute;
-  top: 6px;
-  right: 8px;
-  width: 34px;
-  height: 26px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.35);
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 88px;
+  border: 0;
+  border-left: 2px dashed #46c191;
+  border-radius: 0 11px 11px 0;
+  background: rgba(0, 0, 0, 0.28);
   color: var(--chalk);
   font-family: var(--font-num), Impact, sans-serif;
-  font-size: 18px;
+  font-size: 34px;
   line-height: 1;
   display: grid;
   place-items: center;
 }
-.k-minus:disabled {
-  opacity: 0.25;
+.k-minus:active {
+  background: rgba(0, 0, 0, 0.45);
 }
 
+/* Live only once there is something to take back, and coloured to say so —
+   at a glance you can tell whether that thumb press will do anything. */
+.k-minus.live {
+  background: rgba(255, 92, 69, 0.22);
+  border-left-color: var(--strike);
+  color: #ffd9d2;
+}
+.k-minus.live:active {
+  background: rgba(255, 92, 69, 0.36);
+}
+.k-minus:disabled {
+  opacity: 0.22;
+  color: var(--muted);
+}
+.k-minus {
+  position: static;
+  flex: 0 0 auto;
+  height: 100%;
+  align-self: stretch;
+}
 .k {
   position: relative;
   border: 1px solid var(--line);
@@ -893,9 +962,14 @@ td b {
 }
 
 /* Only the keys that actually double are marked. */
-.court.impact .k.zone {
+.court.impact .k.zone:not(.on) {
   border-color: var(--sodium-dim);
   background: linear-gradient(#3a3018, #241d0e);
+}
+.court.impact .k.on::after,
+.court.impactball .k.on::after {
+  color: #150e00 !important;
+  opacity: 0.75;
 }
 .court.impact .k.zone::after {
   content: '×2';
@@ -908,8 +982,31 @@ td b {
   color: var(--sodium);
   opacity: 0.85;
 }
-.court.impact .k.pitch {
+/* The pitch doubles too — runs they ran count the same as runs off the bat —
+   so it carries the same mark as the zone keys. Only when it is NOT selected:
+   a selected key keeps its bright face, or the count goes dark on dark. */
+.court.impact .k.pitch:not(.on) {
   border-color: var(--sodium-dim);
+  background: linear-gradient(#33291a, #201a10);
+}
+.court.impact .k.pitch::after,
+.court.impactball .k.pitch::after {
+  content: '×2';
+  position: absolute;
+  top: 4px;
+  right: 96px;
+  font-family: var(--font-ui), system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--sodium);
+  opacity: 0.85;
+}
+.court.impactball .k.pitch:not(.on) {
+  border-color: #7a3226;
+  background: linear-gradient(#37201a, #241310);
+}
+.court.impactball .k.pitch::after {
+  color: var(--strike);
 }
 
 /* The impact ball is the sharper of the two: one delivery, doubled. */
@@ -921,7 +1018,7 @@ td b {
   box-shadow: 0 0 0 1px rgba(255, 92, 69, 0.4), 0 0 26px -6px rgba(255, 92, 69, 0.6);
   animation: impactpulse 1.6s ease-in-out infinite;
 }
-.court.impactball .k.zone {
+.court.impactball .k.zone:not(.on) {
   border-color: #7a3226;
   background: linear-gradient(#3d2119, #291410);
 }

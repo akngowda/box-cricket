@@ -197,7 +197,7 @@ create table if not exists public.deliveries (
   impact_ball     boolean not null default false,      -- R21
   -- R14 — no LBW, no byes.
   wicket_type     text check (wicket_type in ('bowled', 'caught', 'runout', 'stumped',
-                                              'dotout', 'bodyout', 'retired_out',
+                                              'hitwicket', 'dotout', 'bodyout', 'retired_out',
                                               'retired_hurt')),
   player_out_id   uuid references public.players (id),
   fielder_id      uuid references public.players (id), -- R33 fielding stats
@@ -211,7 +211,8 @@ create table if not exists public.deliveries (
   unique (innings_id, seq),
   -- R7b — a wide carries nothing off the bat and only allows a stumping (R10).
   check (extra_type <> 'wide' or (declared_runs = 0 and physical_runs = 0 and not is_body_hit)),
-  check (extra_type <> 'wide' or wicket_type is null or wicket_type = 'stumped'),
+  check (extra_type <> 'wide' or wicket_type is null
+         or wicket_type in ('stumped', 'hitwicket')),
   -- R11 — only a run out is possible on a no-ball, and body does not count.
   check (extra_type <> 'noball' or wicket_type is null or wicket_type = 'runout'),
   check (extra_type <> 'noball' or not is_body_hit),

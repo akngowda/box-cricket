@@ -23,6 +23,16 @@ export interface ReplayOutput {
   state: InningsState;
   /** One result per non-voided delivery, in order — this is the commentary. */
   results: DeliveryResult[];
+  /**
+   * Events that could not be applied, and why.
+   *
+   * A ball is a fact and must always replay. An event is an instruction, and
+   * an instruction can stop making sense: undo a ball and a bowler change
+   * recorded after it may now break the rest rule, or a rule may have changed
+   * since. Those are skipped rather than thrown, because losing the whole
+   * innings to a stale instruction is far worse than ignoring it.
+   */
+  skipped: Array<{ seq: number; type: string; reason: string }>;
 }
 
 /** Replay a bare delivery log. */
@@ -48,10 +58,15 @@ export function replayTimeline(
 
   let state = createInnings(init);
   const results: DeliveryResult[] = [];
+  const skipped: ReplayOutput['skipped'] = [];
 
   for (const entry of ordered) {
     if (entry.kind === 'event') {
-      state = applyEvent(state, entry.event, rules);
+      try {
+        state = applyEvent(state, entry.event, rules);
+      } catch (err) {
+        skipped.push({ seq: entry.seq, type: entry.event.type, reason: (err as Error).message });
+      }
       continue;
     }
     // Voided balls never happened, but the row survives for the audit trail.
@@ -61,7 +76,7 @@ export function replayTimeline(
     results.push(result);
   }
 
-  return { state, results };
+  return { state, results, skipped };
 }
 
 function seqOf(e: TimelineEntry): number {

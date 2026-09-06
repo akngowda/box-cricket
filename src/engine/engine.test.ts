@@ -19,7 +19,7 @@ import {
   zoneFor,
 } from './engine';
 import { DEFAULT_RULES, resolveConfig, totalLegalBalls } from './rules';
-import { replayInnings, voidLastDelivery } from './replay';
+import { replayInnings, replayTimeline, voidLastDelivery } from './replay';
 import type {
   DeliveryInput,
   DeliveryResult,
@@ -430,7 +430,7 @@ describe('R7 / R7b — pad inputs and interlocks', () => {
     expect(() => applyDelivery(innings(), ball({ physicalRuns: 10 }), DEFAULT_RULES)).toThrow(/R7/);
   });
 
-  it('R10 — a wide carries no runs off the bat and only allows a stumping', () => {
+  it('R10 — a wide carries no runs off the bat, and allows only stumped or hit wicket', () => {
     expect(() =>
       applyDelivery(innings(), ball({ extra: 'wide', physicalRuns: 1 }), DEFAULT_RULES),
     ).toThrow(/R10/);
@@ -441,6 +441,15 @@ describe('R7 / R7b — pad inputs and interlocks', () => {
         DEFAULT_RULES,
       ),
     ).toThrow(/R10/);
+
+    // Hit wicket off a wide is allowed, and the bowler gets it.
+    const hw = bowl(innings(), {
+      extra: 'wide',
+      wicket: { type: 'hitwicket', newBatsmanId: 'b3' },
+    });
+    expect(hw.result.wicket?.type).toBe('hitwicket');
+    expect(hw.state.bowlers.o1?.wickets).toBe(1);
+    expect(hw.result.announcement).toBe('wide ball, batsman hit wicket');
     const out = bowl(innings(), {
       extra: 'wide',
       wicket: { type: 'stumped', newBatsmanId: 'b3' },
@@ -1227,5 +1236,111 @@ describe('R16 — correcting a dot count by hand', () => {
     expect(s.batsmen.b1?.nextDotDismisses).toBe(false);
     if (s.strikerId !== 'b1') s = applyEvent(s, { type: 'strike_switched_manually' }, r);
     expect(bowl(s, DOT, r).result.wicket).toBeNull();
+  });
+})
+
+describe('R14 / R18 — hit wicket', () => {
+  it('is a dismissal, credited to the bowler, carrying no runs', () => {
+    const r = DEFAULT_RULES;
+    const { state, result } = bowl(innings(), {
+      wicket: { type: 'hitwicket', newBatsmanId: 'b3' },
+    }, r);
+    expect(result.wicket?.type).toBe('hitwicket');
+    expect(result.wicket?.bowlerCredited).toBe(true);
+    expect(state.bowlers.o1?.wickets).toBe(1);
+    expect(result.teamRuns).toBe(0);
+    expect(result.announcement).toBe('batsman hit wicket');
+  });
+
+  it('cannot carry runs, like every dismissal but a run out', () => {
+    expect(() =>
+      applyDelivery(
+        innings(),
+        ball({ declaredRuns: 4, contact: 'direct', wicket: { type: 'hitwicket' } }),
+        DEFAULT_RULES,
+      ),
+    ).toThrow(/R14a/);
+  });
+})
+
+describe('R20e — taking back the impact over', () => {
+  it('is locked once a ball is bowled, and free again if those balls are undone', () => {
+    const r = DEFAULT_RULES;
+    const init = {
+      battingOrder: BAT,
+      bowlingSquad: BOWL,
+      strikerId: 'b1',
+      nonStrikerId: 'b2',
+      bowlerId: 'o1',
+    };
+    const declare = { kind: 'event' as const, seq: 1, event: { type: 'impact_over_declared' as const, overNo: 0 } };
+
+    // Declared, nothing bowled: it can still be taken back.
+    const fresh = replayTimeline([declare], r, init).state;
+    expect(() => applyEvent(fresh, { type: 'impact_over_undone' }, r)).not.toThrow();
+
+    // One ball bowled in it: settled.
+    const ball: StoredDelivery = { id: 'a', seq: 2, declaredRuns: 6, contact: 'direct' };
+    const bowled = replayTimeline([declare, { kind: 'delivery', delivery: ball }], r, init).state;
+    expect(bowled.runs).toBe(12); // it doubled, which is why it cannot move
+    expect(() => applyEvent(bowled, { type: 'impact_over_undone' }, r)).toThrow(/R20e/);
+
+    // Undo that ball and the over is fresh again, so it can be taken back.
+    const undone = replayTimeline(
+      [declare, { kind: 'delivery', delivery: { ...ball, isVoided: true } }],
+      r,
+      init,
+    ).state;
+    expect(undone.legalBalls).toBe(0);
+    const cleared = applyEvent(undone, { type: 'impact_over_undone' }, r);
+    expect(cleared.impactOverNumber).toBeNull();
+  });
+})
+
+describe('replay is never lost to a stale instruction', () => {
+  it('an event that no longer applies is skipped, and the balls still count', () => {
+    const r = DEFAULT_RULES;
+    const init = {
+      battingOrder: BAT,
+      bowlingSquad: BOWL,
+      strikerId: 'b1',
+      nonStrikerId: 'b2',
+      bowlerId: 'o1',
+    };
+
+    // A bowler change that breaks the rest rule — the kind of thing an undo
+    // can leave behind — sits in the middle of a perfectly good innings.
+    const out = replayTimeline(
+      [
+        { kind: 'delivery', delivery: { id: 'a', seq: 1, declaredRuns: 6, contact: 'direct' } },
+        { kind: 'event', seq: 2, event: { type: 'bowler_selected', bowlerId: 'o1' } },
+        { kind: 'delivery', delivery: { id: 'b', seq: 3, declaredRuns: 4, contact: 'direct' } },
+      ],
+      r,
+      init,
+    );
+
+    expect(out.state.runs).toBe(10);
+    expect(out.results).toHaveLength(2);
+    expect(out.skipped).toHaveLength(1);
+    expect(out.skipped[0]?.type).toBe('bowler_selected');
+  });
+})
+
+describe('R20 — one impact over per innings', () => {
+  it('cannot be taken a second time once it has been bowled', () => {
+    const r = DEFAULT_RULES;
+    let s = applyEvent(innings(), { type: 'impact_over_declared', overNo: 0 }, r);
+
+    // Declaring again while the first is still pending is refused.
+    expect(() => applyEvent(s, { type: 'impact_over_declared', overNo: 3 }, r)).toThrow(/R20/);
+
+    // Bowl it out; it is spent, and cannot be claimed again later.
+    s = bowlMany(s, Array.from({ length: 6 }, () => SIX), r).state;
+    expect(s.impactOverNumber).toBe(0);
+    expect(() => applyEvent(s, { type: 'impact_over_declared', overNo: 3 }, r)).toThrow(/R20/);
+
+    // And it cannot be taken back after the fact.
+    expect(() => applyEvent(s, { type: 'impact_over_undone' }, r)).toThrow(/R20e/);
   });
 })
