@@ -19,6 +19,7 @@ import {
   deleteSeries,
   renamePlayer,
   renameSeries,
+  reopenPreviousInnings,
   setSeriesIsTest,
   recordCall,
   recordDecision,
@@ -360,5 +361,60 @@ describe('team codes', () => {
     expect(squadCode(withTeams, withTeams.squads[0]!.id)).toBe('AKA');
     expect(squadCode(withTeams, withTeams.squads[1]!.id)).toBe('STR');
     expect(squadName(withTeams, withTeams.squads[0]!.id)).toBe('Team Akarsh');
+  });
+});
+
+describe('R7d — undo steps back past what came after the ball', () => {
+  it('a bowler picked after the ball is un-picked, so the over is his again', () => {
+    const rules = { ...DEFAULT_RULES, ballsPerOver: 2, oversPerInnings: 4 };
+    const { db, matchId } = setUp({ ballsPerOver: 2, oversPerInnings: 4 });
+    let after = startInnings(db, matchId, rules);
+    const innings = after.innings[0]!;
+    const first = scoreboard(after, innings, rules)!.state.currentBowlerId!;
+
+    // Bowl the over out.
+    after = score(after, innings.id, rules, { declaredRuns: 1, contact: 'pitched' });
+    after = score(after, innings.id, rules, { declaredRuns: 1, contact: 'pitched' });
+    expect(scoreboard(after, innings, rules)!.state.currentBowlerId).toBeNull();
+
+    // Pick the next over's bowler...
+    const next = squadMembers(after, innings.bowling_squad_id).find((p) => p.id !== first)!;
+    after = appendEvent(after, matchId, innings.id, 'bowler_selected', { bowlerId: next.id });
+    expect(scoreboard(after, innings, rules)!.state.currentBowlerId).toBe(next.id);
+
+    // ...then go back to fix the last ball of the previous over. The over is
+    // the first bowler's again — the new man was never meant to bowl in it.
+    after = voidLastBall(after, innings.id);
+    const board = scoreboard(after, innings, rules)!;
+    expect(board.state.currentBowlerId).toBe(first);
+    expect(board.state.legalBalls).toBe(1);
+
+    // And he is still free to bowl the next over when it comes.
+    expect(board.state.bowlers[next.id]?.legalBalls ?? 0).toBe(0);
+  });
+});
+
+describe('R7d — undo can step back out of a chase', () => {
+  it('a chase that has not been scored on gives way, and the first innings re-opens', () => {
+    const rules = { ...DEFAULT_RULES, oversPerInnings: 1, ballsPerOver: 2 };
+    const { db, matchId } = setUp({ oversPerInnings: 1, ballsPerOver: 2 });
+    let after = startInnings(db, matchId, rules);
+    const first = after.innings[0]!;
+    after = score(after, first.id, rules, { declaredRuns: 1, contact: 'pitched' });
+    after = score(after, first.id, rules, { declaredRuns: 1, contact: 'pitched' });
+
+    const closed = scoreboard(after, first, rules)!;
+    expect(closed.state.status).toBe('complete');
+    after = startSecondInnings(after, matchId, closed.state.runs);
+    expect(after.innings.filter((i) => i.match_id === matchId)).toHaveLength(2);
+
+    // Nothing has been bowled in the chase, so step back into the first.
+    after = reopenPreviousInnings(after, matchId);
+    expect(after.innings.filter((i) => i.match_id === matchId)).toHaveLength(1);
+    expect(after.innings[0]!.status).toBe('in_progress');
+
+    // ...and from there undo keeps working through its balls.
+    after = voidLastBall(after, first.id);
+    expect(scoreboard(after, first, rules)!.state.legalBalls).toBe(1);
   });
 });

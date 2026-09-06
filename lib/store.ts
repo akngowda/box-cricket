@@ -785,6 +785,37 @@ export function abandonMatch(db: DB, matchId: string): DB {
   );
 }
 
+/**
+ * Step back out of a chase that should not have started yet.
+ *
+ * Closing an innings is a decision like any other, and it is usually where a
+ * wrong total gets noticed. If the second innings has not been scored on, this
+ * takes it away and re-opens the first, so undo can carry on back through its
+ * balls. Once the chase has begun it stays — those balls are real.
+ */
+export function reopenPreviousInnings(db: DB, matchId: string): DB {
+  const second = db.innings.find((i) => i.match_id === matchId && i.seq === 2);
+  const first = db.innings.find((i) => i.match_id === matchId && i.seq === 1);
+  if (!second || !first) return db;
+  if (db.deliveries.some((d) => d.innings_id === second.id && !d.is_voided)) return db;
+
+  return logActivity(
+    {
+      ...db,
+      innings: db.innings
+        .filter((i) => i.id !== second.id)
+        .map((i) => (i.id === first.id ? { ...i, status: 'in_progress' as const, end_reason: null } : i)),
+      deliveries: db.deliveries.filter((d) => d.innings_id !== second.id),
+      match_events: db.match_events.filter((e) => e.innings_id !== second.id),
+      matches: db.matches.map((m) =>
+        m.id === matchId ? { ...m, status: 'live' as const, result_text: null, winner_squad_id: null } : m,
+      ),
+    },
+    'innings_reopened',
+    'went back into the first innings',
+  );
+}
+
 export function completeMatch(db: DB, matchId: string, winnerSquadId: string | null, text: string): DB {
   return logActivity(
     {
@@ -813,20 +844,41 @@ export function appendDelivery(db: DB, row: DeliveryRow): DB {
   return { ...db, deliveries: [...db.deliveries, { ...row, created_by: row.created_by ?? actor() }] };
 }
 
-/** R7d — undo voids, never deletes. */
+/**
+ * R7d — undo voids the last ball, and takes back what was decided after it.
+ *
+ * A bowler change, an impact-over declaration and the like are instructions
+ * recorded at a point in the log. Undoing a ball but leaving them in place was
+ * wrong: the bowler you picked for the NEXT over stayed picked, so he became
+ * the bowler of the re-scored ball, and was then resting when his over came
+ * round. Stepping back past an instruction has to take the instruction with
+ * it. The ball itself is only marked voided — nothing is erased.
+ */
 export function voidLastBall(db: DB, inningsId: string): DB {
   const live = db.deliveries
     .filter((d) => d.innings_id === inningsId && !d.is_voided)
     .sort((a, b) => a.seq - b.seq);
   const last = live[live.length - 1];
   if (!last) return db;
+
+  // Instructions made after this ball no longer describe where we are.
+  const undone = db.match_events.filter(
+    (e) =>
+      e.innings_id === inningsId &&
+      e.seq !== null &&
+      e.seq > last.seq &&
+      e.type !== 'innings_start',
+  );
+
   return logActivity(
     {
       ...db,
       deliveries: db.deliveries.map((d) => (d.id === last.id ? { ...d, is_voided: true } : d)),
+      match_events: db.match_events.filter((e) => !undone.some((u) => u.id === e.id)),
     },
     'ball_voided',
-    `over ${last.over_no}.${last.ball_no}, ${last.team_runs} run${last.team_runs === 1 ? '' : 's'}`,
+    `over ${last.over_no}.${last.ball_no}, ${last.team_runs} run${last.team_runs === 1 ? '' : 's'}` +
+      (undone.length > 0 ? ` (and ${undone.length} later change${undone.length === 1 ? '' : 's'})` : ''),
   );
 }
 

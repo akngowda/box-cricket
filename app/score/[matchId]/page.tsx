@@ -21,9 +21,11 @@ import {
   extendSeries,
   nextSeq,
   playerName,
+  setBallVoided,
   squadCode,
   squadMembers,
   squadName,
+  reopenPreviousInnings,
   startSecondInnings,
   useDB,
   useMutate,
@@ -270,10 +272,17 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     setSheet('none');
   };
 
-  // R7d — Undo clears a half-made selection, else voids the last ball.
+  // R7d — Undo clears a half-made selection, else steps back a ball. When
+  // there is nothing left to step back in this innings and the chase has only
+  // just begun, it steps back out of the chase into the innings before it.
   const undo = (): void => {
     if (JSON.stringify(sel) !== JSON.stringify(EMPTY)) {
       setSel(EMPTY);
+      return;
+    }
+    const hasBall = db.deliveries.some((d) => d.innings_id === current.id && !d.is_voided);
+    if (!hasBall && current.seq === 2) {
+      mutate((d) => reopenPreviousInnings(d, match.id));
       return;
     }
     mutate((d) => voidLastBall(d, current.id));
@@ -283,6 +292,12 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     mutate((d) => appendEvent(d, match.id, current.id, type, payload));
 
   const thisOver = results.filter((r) => r.overNo === over);
+
+  /** The ball the next undo would take back. */
+  const lastBall = db.deliveries
+    .filter((d) => d.innings_id === current.id && !d.is_voided)
+    .sort((a, b) => a.seq - b.seq)
+    .at(-1);
 
   return (
     <div className="app">
@@ -403,6 +418,25 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
           </div>
         </div>
       </div>
+
+      {/* The innings being over is not the end of correcting it: undo steps
+          back a ball at a time, and keeps stepping. */}
+      {done && (
+        <div className="pad" style={{ marginTop: 10 }}>
+          <Btn className="btn ghost" onTap={undo}>
+            Undo the last ball
+          </Btn>
+          <div className="hint" style={{ marginTop: 6, textAlign: 'center' }}>
+            {lastBall
+              ? `Takes back ${lastBall.over_no}.${lastBall.ball_no} — ${lastBall.team_runs} run${
+                  lastBall.team_runs === 1 ? '' : 's'
+                }. Press again to keep going back.`
+              : current.seq === 2
+                ? 'Goes back into the first innings.'
+                : 'Nothing left to take back.'}
+          </div>
+        </div>
+      )}
 
       {done ? (
         <InningsOver
@@ -642,6 +676,16 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             setSheet('none');
           }}
           onClose={needsBowler ? undefined : () => setSheet('none')}
+          onUndo={
+            lastBall
+              ? {
+                  label: `Undo ${lastBall.over_no}.${lastBall.ball_no} (${lastBall.team_runs} run${
+                    lastBall.team_runs === 1 ? '' : 's'
+                  })`,
+                  run: undo,
+                }
+              : undefined
+          }
         />
       )}
 
@@ -981,6 +1025,7 @@ function BowlerSheet({
   midOver,
   onPick,
   onClose,
+  onUndo,
 }: {
   db: DB;
   state: InningsState;
@@ -988,6 +1033,8 @@ function BowlerSheet({
   midOver: boolean;
   onPick: (id: string) => void;
   onClose?: (() => void) | undefined;
+  /** Stepping back into the previous over instead of starting a new one. */
+  onUndo?: { label: string; run: () => void } | undefined;
 }) {
   const squad = [...state.bowlingSquad].sort((a, b) =>
     playerName(db, a).localeCompare(playerName(db, b)),
@@ -1030,6 +1077,13 @@ function BowlerSheet({
           );
         })}
       </div>
+
+      {/* The over is only over until you take a ball back. */}
+      {onUndo && !midOver && (
+        <Btn className="btn ghost" style={{ marginTop: 12 }} onTap={onUndo.run}>
+          {onUndo.label}
+        </Btn>
+      )}
 
       {squad.every((id) => {
         const overs = state.bowlers[id]?.oversCompleted ?? 0;
