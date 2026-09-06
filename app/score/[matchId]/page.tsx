@@ -189,10 +189,10 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const impactBallNext =
     rules.impactBallAllowed && state.legalBalls === rules.oversPerInnings * rules.ballsPerOver - 1;
 
-  /** Who is left to walk in, in batting order. */
-  const availableBatsmen = state.battingOrder.filter(
-    (id) => !state.batsmen[id]?.hasBatted && !state.batsmen[id]?.isOut,
-  );
+  /** Who is left to walk in, by name, so the list reads the same every time. */
+  const availableBatsmen = state.battingOrder
+    .filter((id) => !state.batsmen[id]?.hasBatted && !state.batsmen[id]?.isOut)
+    .sort((a, b) => playerName(db, a).localeCompare(playerName(db, b)));
 
   // --- commit ---------------------------------------------------------------
   const commit = (wicket?: DeliveryInput['wicket'], chosenIn?: string): void => {
@@ -428,6 +428,20 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             >
               {sel.phys > 0 ? `+${sel.phys}` : '+'}
               <small>{sel.phys > 0 ? 'tap to add · hold to clear' : 'tap once per run'}</small>
+              <button
+                className="k-minus"
+                disabled={sel.phys === 0 || dis.runs}
+                aria-label="one run fewer"
+                onPointerDown={(e) => {
+                  // Its own control, so it never counts as a tap on the pitch.
+                  e.stopPropagation();
+                  navigator.vibrate?.(10);
+                  setSel((s) => ({ ...s, phys: Math.max(0, s.phys - 1) }));
+                }}
+                onPointerUp={(e) => e.stopPropagation()}
+              >
+                −
+              </button>
             </Key>
 
             <Key
@@ -444,8 +458,15 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             </Key>
           </div>
 
-          {/* Impact over · Dot · Wicket · Undo */}
-          <div className="krow" style={{ gridTemplateColumns: `repeat(${rules.threeBodyOut ? 5 : 4},1fr)` }}>
+          {/* Impact over · Wicket (wide) · Undo. There is no Dot key: a ball
+              with nothing tapped IS a dot, so Save alone records it. */}
+          <div
+            className="krow"
+            style={{
+              marginTop: 16,
+              gridTemplateColumns: rules.threeBodyOut ? '1fr 1fr 2fr 1fr' : '1fr 2fr 1fr',
+            }}
+          >
             {rules.impactOverAllowed &&
               (state.impactOverNumber === null ? (
                 <Key
@@ -463,10 +484,6 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
                   Undo impact<small>over {state.impactOverNumber + 1}</small>
                 </Key>
               ))}
-
-            <Key on={sel.dot} disabled={dis.dot} onTap={() => setSel((s) => (s.dot ? EMPTY : { ...EMPTY, dot: true }))}>
-              Dot<small>{dotLocked ? 'body hit' : '0 & 0'}</small>
-            </Key>
 
             {rules.threeBodyOut && (
               <Key
@@ -486,13 +503,14 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
           </div>
 
           {/* Runs on this ball, and the commit. */}
-          <div className="krow" style={{ gridTemplateColumns: '1.3fr 1fr' }}>
+          <div className="krow" style={{ gridTemplateColumns: '1fr' }}>
             <div className="k total" style={{ pointerEvents: 'none' }}>
               {preview ? `${preview.teamRuns} run${preview.teamRuns === 1 ? '' : 's'}` : '—'}
               <small>{preview ? ballSummary(sel, preview) : 'pick a bowler'}</small>
             </div>
             <Key
               className="save"
+              style={{ minHeight: 56 }}
               disabled={needsBowler || done}
               onTap={() => commit()}
               buzz={preview?.wicket ? [30, 50, 30] : 10}
@@ -652,9 +670,11 @@ function Key({
   onTap,
   onHold,
   buzz,
+  style,
 }: {
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
   on?: boolean;
   disabled?: boolean;
   onTap: () => void;
@@ -674,6 +694,7 @@ function Key({
   return (
     <button
       className={`k ${className} ${on ? 'on' : ''}`}
+      style={style}
       disabled={disabled}
       onPointerDown={(e) => {
         down.current = { x: e.clientX, y: e.clientY, t: Date.now() };
@@ -781,9 +802,9 @@ function FixBatsman({
   onClose: () => void;
   onPick: (incomingId: string) => void;
 }) {
-  const choices = state.battingOrder.filter(
-    (id) => id !== state.strikerId && id !== state.nonStrikerId && !state.batsmen[id]?.isOut,
-  );
+  const choices = state.battingOrder
+    .filter((id) => id !== state.strikerId && id !== state.nonStrikerId && !state.batsmen[id]?.isOut)
+    .sort((a, b) => playerName(db, a).localeCompare(playerName(db, b)));
   return (
     <Sheet title={`Replace ${playerName(db, outgoingId)}`} onClose={onClose}>
       <div className="hint" style={{ marginBottom: 10 }}>
@@ -848,9 +869,11 @@ function BowlerSheet({
   onClose?: (() => void) | undefined;
 }) {
   // R20b is intrinsic: he is simply not in the list.
-  const eligible = midOver
-    ? state.bowlingSquad.filter((id) => (state.bowlers[id]?.oversCompleted ?? 0) < rules.maxOversPerBowler)
-    : eligibleBowlers(state, rules);
+  const eligible = (
+    midOver
+      ? state.bowlingSquad.filter((id) => (state.bowlers[id]?.oversCompleted ?? 0) < rules.maxOversPerBowler)
+      : eligibleBowlers(state, rules)
+  ).sort((a, b) => playerName(db, a).localeCompare(playerName(db, b)));
   return (
     <Sheet title={midOver ? 'Replace the bowler mid-over' : 'Who bowls this over?'} onClose={onClose ?? (() => {})}>
       <div className="hint" style={{ marginBottom: 10 }}>
@@ -903,14 +926,15 @@ function WicketSheet({
         : ['bowled', 'caught', 'runout', 'stumped', 'retired_out', 'retired_hurt'];
 
   const atCrease = [state.strikerId, state.nonStrikerId].filter((x): x is string => x !== null);
-  const nextIn = state.battingOrder.find((id) => !state.batsmen[id]?.hasBatted && !state.batsmen[id]?.isOut) ?? '';
+  const available = state.battingOrder
+    .filter((id) => !state.batsmen[id]?.hasBatted && !state.batsmen[id]?.isOut)
+    .sort((a, b) => playerName(db, a).localeCompare(playerName(db, b)));
+  const nextIn = available[0] ?? '';
   const [type, setType] = useState<WicketType>(allowed[0] as WicketType);
   const [outId, setOutId] = useState<string>(state.strikerId ?? '');
   const [fielderId, setFielderId] = useState('');
   const [newId, setNewId] = useState(nextIn);
   const [onStrike, setOnStrike] = useState(false);
-
-  const available = state.battingOrder.filter((id) => !state.batsmen[id]?.hasBatted && !state.batsmen[id]?.isOut);
 
   return (
     <Sheet title="Wicket" onClose={onClose}>
@@ -1125,9 +1149,10 @@ function Picker({
   value: string;
   onPick: (id: string) => void;
 }) {
+  const sorted = [...options].sort((a, b) => a.name.localeCompare(b.name));
   return (
     <div className="grid3">
-      {options.map((p) => (
+      {sorted.map((p) => (
         <Opt key={p.id} on={value === p.id} onTap={() => onPick(p.id)} style={{ fontSize: 12 }}>
           {p.name}
         </Opt>

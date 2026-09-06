@@ -300,6 +300,15 @@ export function applyEvent(
         throw new EngineError('That batsman is not at the crease', 'R26');
       }
       incoming.hasBatted = true;
+
+      // The man being taken off was put in by mistake. If he never faced a
+      // ball he has not batted at all, so let him come in again later — the
+      // old behaviour quietly removed him from every future list.
+      const outgoing = s.batsmen[event.outgoingId];
+      if (outgoing && outgoing.ballsFaced === 0 && outgoing.runs === 0 && !outgoing.isOut) {
+        outgoing.hasBatted = false;
+      }
+
       if (s.strikerId === event.outgoingId) s.strikerId = event.incomingId;
       else s.nonStrikerId = event.incomingId;
       return s;

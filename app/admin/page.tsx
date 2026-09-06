@@ -23,6 +23,7 @@ import {
   createSeries,
   deleteAllTestSeries,
   deletePlayer,
+  playerNameTaken,
   renamePlayer,
   generalSettings,
   removeAdmin,
@@ -238,6 +239,10 @@ function PoolSheet({ onClose }: { onClose: () => void }) {
           style={{ width: 80 }}
           disabled={name.trim().length === 0}
           onTap={() => {
+            if (playerNameTaken(db, name)) {
+              alert(`There is already a ${name.trim()} in the pool. Names have to be unique, or the scorer cannot tell them apart — try adding a surname or initial.`);
+              return;
+            }
             mutate((d) => addPlayer(d, name));
             setName('');
           }}
@@ -269,7 +274,12 @@ function PoolSheet({ onClose }: { onClose: () => void }) {
             style={{ width: 66, padding: '7px 4px', fontSize: 12 }}
             onTap={() => {
               const next = prompt('New name', p.name);
-              if (next && next.trim()) mutate((d) => renamePlayer(d, p.id, next));
+              if (!next || !next.trim()) return;
+              if (playerNameTaken(db, next, p.id)) {
+                alert(`There is already a ${next.trim()} in the pool.`);
+                return;
+              }
+              mutate((d) => renamePlayer(d, p.id, next));
             }}
           >
             Rename

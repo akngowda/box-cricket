@@ -221,7 +221,22 @@ export function saveGeneralSettings(db: DB, config: RulesConfigOverride): DB {
 
 // --- players and jerseys ----------------------------------------------------
 
+/**
+ * Is this name already taken?
+ *
+ * Two players called the same thing is not a cosmetic problem: every picker in
+ * the app shows names, so the scorer cannot tell which one he is choosing, and
+ * a wicket gets credited to the wrong man.
+ */
+export function playerNameTaken(db: DB, name: string, exceptId?: string): boolean {
+  const wanted = name.trim().toLowerCase();
+  return db.players.some(
+    (p) => p.id !== exceptId && p.deleted_at === null && p.name.trim().toLowerCase() === wanted,
+  );
+}
+
 export function addPlayer(db: DB, name: string): DB {
+  if (name.trim() === '' || playerNameTaken(db, name)) return db;
   return logActivity({
     ...db,
     players: [
@@ -406,7 +421,8 @@ export function squadMembers(db: DB, squadId: string): PlayerRow[] {
     .map((sp) => sp.player_id);
   return ids
     .map((id) => db.players.find((p) => p.id === id))
-    .filter((p): p is PlayerRow => p !== undefined);
+    .filter((p): p is PlayerRow => p !== undefined)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function squadName(db: DB, squadId: string | null): string {
@@ -695,6 +711,7 @@ export function deleteAllTestSeries(db: DB): DB {
 // --- renaming (admin only; the UI is what gates it) -------------------------
 
 export function renamePlayer(db: DB, playerId: string, name: string): DB {
+  if (name.trim() === '' || playerNameTaken(db, name, playerId)) return db;
   const from = db.players.find((p) => p.id === playerId)?.name ?? '';
   return logActivity(
     { ...db, players: db.players.map((p) => (p.id === playerId ? { ...p, name: name.trim() } : p)) },

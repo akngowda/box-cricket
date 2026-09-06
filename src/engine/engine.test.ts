@@ -1063,3 +1063,29 @@ describe('R30 — audio at the end of an over and the end of a match', () => {
     expect(bowl(s, SIX, r).result.announcement).toBe('doubled, twelve runs');
   });
 });
+
+describe('R26 — correcting a mis-tapped batsman', () => {
+  it('the man taken off can come in again later if he never faced a ball', () => {
+    const r = DEFAULT_RULES;
+    // b3 walks in by mistake; b4 should have.
+    let s = bowl(innings(), { wicket: { type: 'bowled', newBatsmanId: 'b3' } }, r).state;
+    expect(s.strikerId).toBe('b3');
+
+    s = applyEvent(s, { type: 'batsman_corrected', outgoingId: 'b3', incomingId: 'b4' }, r);
+    expect(s.strikerId).toBe('b4');
+    // b3 never faced a ball, so he is still to bat.
+    expect(s.batsmen.b3?.hasBatted).toBe(false);
+
+    // And he is genuinely available at the next wicket.
+    const next = bowl(s, { wicket: { type: 'bowled', newBatsmanId: 'b3' } }, r);
+    expect(next.state.strikerId).toBe('b3');
+  });
+
+  it('a man who has faced a ball keeps his innings when swapped off', () => {
+    const r = DEFAULT_RULES;
+    let s = bowl(innings(), { declaredRuns: 4, contact: 'direct' }, r).state;
+    s = applyEvent(s, { type: 'batsman_corrected', outgoingId: 'b1', incomingId: 'b3' }, r);
+    expect(s.batsmen.b1?.hasBatted).toBe(true);
+    expect(s.batsmen.b1?.runs).toBe(4);
+  });
+});

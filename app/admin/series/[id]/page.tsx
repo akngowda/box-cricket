@@ -19,6 +19,7 @@ import {
   deleteSeries,
   extendSeries,
   isTestSeries,
+  playerNameTaken,
   renameJersey,
   renameSeries,
   setSeriesIsTest,
@@ -342,6 +343,10 @@ function AddPlayersSheet({ squad, onClose }: { squad: SquadRow; onClose: () => v
           style={{ width: 92 }}
           disabled={q.trim().length === 0}
           onTap={() => {
+            if (playerNameTaken(db, q)) {
+              alert(`There is already a ${q.trim()} in the pool.`);
+              return;
+            }
             mutate((d) => {
               const withPlayer = addPlayer(d, q);
               const added = withPlayer.players[withPlayer.players.length - 1];
