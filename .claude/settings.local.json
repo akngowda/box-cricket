@@ -72,7 +72,8 @@
       "mcp__claude_ai_Vercel__list_deployments",
       "Bash(curl -s http://localhost:3000/score/none -o /dev/null -w \"score %{http_code}\\\\n\")",
       "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'New scoring pad: the court, with 3D keys and the pitch as a tap-per-run *)",
-      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Pitch minus, boxed court, stacked runs and save; fix batsman correction removing him from later lists; unique names; sorted pickers *)"
+      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Pitch minus, boxed court, stacked runs and save; fix batsman correction removing him from later lists; unique names; sorted pickers *)",
+      "Bash(git -c user.email=akarsha.kng@gmail.com -c user.name=Akarsha commit -q -m 'Add-players list: free agents first, and a colour per action *)"
     ]
   }
 }

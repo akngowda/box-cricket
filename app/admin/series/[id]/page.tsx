@@ -323,9 +323,15 @@ function AddPlayersSheet({ squad, onClose }: { squad: SquadRow; onClose: () => v
   const takenElsewhere = new Map<string, string>();
   for (const s of otherSquads) for (const p of squadMembers(db, s.id)) takenElsewhere.set(p.id, s.id);
 
+  // Free agents first — those are the ones you are usually looking for. Then
+  // whoever is in the other squad, then your own side, each alphabetical.
+  const rank = (id: string): number =>
+    inThisSquad.has(id) ? 2 : takenElsewhere.has(id) ? 1 : 0;
+
   const list = db.players
     .filter((p) => p.deleted_at === null && p.name.toLowerCase().includes(q.toLowerCase()))
-    .slice(0, 40);
+    .sort((a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name))
+    .slice(0, 60);
 
   return (
     <Sheet title={`Add to ${squadName(db, squad.id)}`} onClose={onClose}>
@@ -365,17 +371,22 @@ function AddPlayersSheet({ squad, onClose }: { squad: SquadRow; onClose: () => v
         const elsewhere = takenElsewhere.get(p.id);
         return (
           <div key={p.id} className="row" style={{ padding: '8px 2px', borderBottom: '1px solid #1B2A22' }}>
-            <span style={{ fontSize: 13.5, flex: 1 }}>
+            <span style={{ fontSize: 13.5, flex: 1, opacity: mine ? 0.65 : 1 }}>
               {p.name}
+              {mine && <span className="sub" style={{ marginLeft: 6 }}>already in this side</span>}
               {elsewhere && (
                 <span className="sub" style={{ marginLeft: 6 }}>
                   in {squadName(db, elsewhere)}
                 </span>
               )}
             </span>
+            {/* Three different actions, three different colours: adding a free
+                agent, taking someone off the other side, and removing one of
+                your own. They were all amber, which is what made this list
+                hard to read at a glance. */}
             <Btn
-              className={mine ? 'btn ghost' : 'btn primary'}
-              style={{ width: 96, padding: '7px 4px', fontSize: 12 }}
+              className={mine ? 'btn danger' : elsewhere ? 'btn swap' : 'btn primary'}
+              style={{ width: 100, padding: '7px 4px', fontSize: 12 }}
               onTap={() =>
                 mutate((d) => (mine ? removeFromSquad(d, squad.id, p.id) : addToSquad(d, squad.id, p.id)))
               }

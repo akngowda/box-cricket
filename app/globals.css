@@ -202,6 +202,12 @@ body {
   background: rgba(255, 92, 69, 0.14);
   color: var(--strike);
 }
+/* Taking a player off the other side is neither adding nor removing. */
+.btn.swap {
+  background: rgba(76, 141, 255, 0.16);
+  border: 1px solid #2f5da8;
+  color: #9cc0ff;
+}
 .btn:disabled {
   opacity: 0.35;
   pointer-events: none;
