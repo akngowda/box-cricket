@@ -11,7 +11,6 @@ import {
   ballsUntilEligible,
   createInnings,
   currentOver,
-  ballsUntilEligible,
   bowlerCapFor,
   eligibleBowlers,
   impactOverIsDefault,

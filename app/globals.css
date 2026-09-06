@@ -874,3 +874,88 @@ td b {
 .krow .k.danger {
   color: var(--strike);
 }
+
+/* ---------------------------------------------------------------------------
+   Impact over and impact ball.
+
+   Doubling is the one thing on this pad you cannot see in the numbers until
+   after you have committed, so the court itself changes: the box glows and the
+   run keys take the impact colour. You should be able to tell across the
+   ground, not by reading a banner.
+   --------------------------------------------------------------------------- */
+
+.court.impact {
+  border-color: var(--sodium);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 182, 39, 0.05) 0 22px, transparent 22px 44px),
+    rgba(255, 182, 39, 0.07);
+  box-shadow: 0 0 0 1px rgba(255, 182, 39, 0.35), 0 0 22px -6px rgba(255, 182, 39, 0.55);
+}
+
+/* Only the keys that actually double are marked. */
+.court.impact .k.zone {
+  border-color: var(--sodium-dim);
+  background: linear-gradient(#3a3018, #241d0e);
+}
+.court.impact .k.zone::after {
+  content: '×2';
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-family: var(--font-ui), system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--sodium);
+  opacity: 0.85;
+}
+.court.impact .k.pitch {
+  border-color: var(--sodium-dim);
+}
+
+/* The impact ball is the sharper of the two: one delivery, doubled. */
+.court.impactball {
+  border-color: var(--strike);
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 92, 69, 0.06) 0 22px, transparent 22px 44px),
+    rgba(255, 92, 69, 0.08);
+  box-shadow: 0 0 0 1px rgba(255, 92, 69, 0.4), 0 0 26px -6px rgba(255, 92, 69, 0.6);
+  animation: impactpulse 1.6s ease-in-out infinite;
+}
+.court.impactball .k.zone {
+  border-color: #7a3226;
+  background: linear-gradient(#3d2119, #291410);
+}
+.court.impactball .k.zone::after {
+  content: '×2';
+  color: var(--strike);
+}
+
+@keyframes impactpulse {
+  50% {
+    box-shadow: 0 0 0 1px rgba(255, 92, 69, 0.55), 0 0 34px -4px rgba(255, 92, 69, 0.75);
+  }
+}
+
+/* The strip above the court that says which it is. */
+.impactflag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.impactflag.over {
+  background: rgba(255, 182, 39, 0.16);
+  color: var(--sodium);
+  border: 1px solid var(--sodium-dim);
+}
+.impactflag.ball {
+  background: rgba(255, 92, 69, 0.16);
+  color: var(--strike);
+  border: 1px solid #5a2a22;
+}

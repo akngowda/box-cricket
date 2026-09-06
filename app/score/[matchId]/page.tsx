@@ -190,6 +190,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
 
   const impactBallNext =
     rules.impactBallAllowed && state.legalBalls === rules.oversPerInnings * rules.ballsPerOver - 1;
+  const isImpactOver = impactOverOf(state, rules) === over;
 
   /** Who is left to walk in, by name, so the list reads the same every time. */
   const availableBatsmen = state.battingOrder
@@ -289,12 +290,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
       </div>
 
       {/* banners */}
-      {impactOverOf(state, rules) === over && (
-        <div className="banner impact">
-          ⬆ Impact over{impactOverIsDefault(state, rules) ? ' by default — nothing was declared' : ''} — bat runs
-          doubled{rules.doubleExtrasOnImpact ? ' (extras too)' : ' (extras not)'}
-        </div>
-      )}
+
       {state.isFreeHit && <div className="banner free">◎ Free hit — run out only</div>}
       {state.lastManActive && (
         <div className="banner last">
@@ -302,7 +298,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
           {state.deadrunnerId ? `, ${playerName(db, state.deadrunnerId)} at the other end` : ''}
         </div>
       )}
-      {impactBallNext && !done && <div className="banner impact">◆ Next legal ball is the impact ball ×2</div>}
+
       {preview?.wicket?.automatic && (
         <>
           <div className="banner last">
@@ -380,7 +376,19 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
           {/* The court. Columns are zones 1, 2 and 3 running away from the
               batsman; the top row is pitched, the bottom direct; the strip
               through the middle is the pitch, tapped once per run they ran. */}
-          <div className="court">
+          {/* Doubling shows on the court itself: amber for the impact over,
+              red for the single impact ball. */}
+          {isImpactOver && !impactBallNext && (
+            <div className="impactflag over">
+              ⬆ IMPACT OVER — bat runs doubled
+              {impactOverIsDefault(state, rules) ? ' (last over, by default)' : ''}
+            </div>
+          )}
+          {impactBallNext && <div className="impactflag ball">◆ IMPACT BALL — this one doubles</div>}
+
+          <div
+            className={`court ${impactBallNext ? 'impactball' : isImpactOver ? 'impact' : ''}`}
+          >
             <Key
               className="k-wide extra"
               on={wideSel}
@@ -402,7 +410,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             ).map(([cell, value, contact, zone]) => (
               <Key
                 key={cell}
-                className={`${cell} ${contact}`}
+                className={`${cell} ${contact} zone`}
                 on={sel.declared === value && sel.contact === contact}
                 disabled={dis.runs || (sel.declared !== null && sel.contact !== contact) ||
                           (sel.declared !== null && sel.declared !== value && sel.contact === contact)}
