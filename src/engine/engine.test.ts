@@ -343,12 +343,54 @@ describe('Part N — the worked examples', () => {
     s = bowl(s, { extra: 'noball' }, r).state;
     expect(s.batsmen.b1?.dotStreak).toBe(2);
     expect(s.legalBalls).toBe(2);
-    // The re-bowled legal delivery is the one that counts. It is a free hit, so
-    // the counter still does not move (R12).
+
+    // The re-bowled delivery is a legal ball, so it counts — and a free hit
+    // protects you from the bowler, not from the dot rule. Played out, it is
+    // his third and he goes.
     const freeHit = bowl(s, DOT, r);
     expect(freeHit.result.wasFreeHit).toBe(true);
-    expect(freeHit.state.batsmen.b1?.dotStreak).toBe(2);
-    expect(freeHit.result.wicket).toBeNull();
+    expect(freeHit.result.wicket?.type).toBe('dotout');
+  });
+
+  it('R16 — runs off a no ball clear the streak, though the no ball never adds to it', () => {
+    const r = rules({ threeDotOut: true });
+    const two = bowlMany(innings(), [DOT, DOT], r).state;
+    expect(two.batsmen.b1?.dotStreak).toBe(2);
+
+    // He hits the free-hit-to-come for four off the no ball itself.
+    const scored = bowl(two, { extra: 'noball', declaredRuns: 4, contact: 'direct' }, r);
+    expect(scored.state.batsmen.b1?.dotStreak).toBe(0);
+
+    // So the free hit that follows is his first dot again, not his third.
+    const next = bowl(scored.state, DOT, r);
+    expect(next.result.wicket).toBeNull();
+    expect(next.state.batsmen.b1?.dotStreak).toBe(1);
+  });
+
+  it('R16 / R12 — a free hit cannot be used to dodge the third dot', () => {
+    const r = rules({ threeDotOut: true });
+    let s = bowlMany(innings(), [DOT, DOT], r).state;
+    s = bowl(s, { extra: 'noball' }, r).state; // free hit set up, streak untouched
+    expect(s.isFreeHit).toBe(true);
+    expect(s.batsmen.b1?.dotStreak).toBe(2);
+
+    const out = bowl(s, DOT, r);
+    expect(out.result.wicket).toEqual({
+      type: 'dotout',
+      playerOutId: 'b1',
+      automatic: true,
+      bowlerCredited: true,
+      fielderId: null,
+    });
+  });
+
+  it('R16 — scoring off the free hit itself clears the streak instead', () => {
+    const r = rules({ threeDotOut: true });
+    let s = bowlMany(innings(), [DOT, DOT], r).state;
+    s = bowl(s, { extra: 'noball' }, r).state;
+    const hit = bowl(s, { declaredRuns: 6, contact: 'direct' }, r);
+    expect(hit.result.wicket).toBeNull();
+    expect(hit.state.batsmen.b1?.dotStreak).toBe(0);
   });
 
   it('N12 (R17/R16) — body before dot: on 1 dot and 2 body hits, a body hit is Body Out', () => {

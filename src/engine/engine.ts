@@ -569,29 +569,38 @@ export function applyDelivery(
   }
 
   // ---- Step 8: automatic dismissals — body before dot (Part O). ----
-  // Counters only move on a legal, non-free-hit ball with no wicket (R12, R16, R17).
-  if (!dismissal && isLegalBall && !wasFreeHit) {
-    if (isBody) {
-      striker.bodyHits += 1;
-      if (rules.threeBodyOut && striker.bodyHits >= rules.bodyHitsToOut) {
-        // R16c — recorded automatically, bowler credited (R18).
-        dismissal = {
-          type: 'bodyout',
-          playerOutId: strikerId,
-          automatic: true,
-          bowlerCredited: true,
-          fielderId: null,
-        };
-        newBatsmanTookGuard = applyDismissal(s, dismissal, bowlerId, input.newBatsmanId);
+  //
+  // R16, as the league plays it:
+  //
+  //  * Runs off the bat clear the streak, whatever kind of ball it was. Score
+  //    off a no ball and you are back to nothing, even though the no ball
+  //    itself could never have been a dot.
+  //  * Only a legal ball can ADD to the streak, so a no ball or a wide that is
+  //    missed leaves it exactly where it was.
+  //  * A free hit is a legal ball, so it counts. A free hit is protection from
+  //    the bowler, not from the dot rule — a batsman on two who plays out a
+  //    free hit is out for his third.
+  if (!dismissal) {
+    if (batRuns > 0) {
+      striker.dotStreak = 0;
+      striker.nextDotDismisses = false;
+    } else if (isLegalBall) {
+      // R17 — the body counter is the one thing a free hit does hold off.
+      if (isBody && !wasFreeHit) {
+        striker.bodyHits += 1;
+        if (rules.threeBodyOut && striker.bodyHits >= rules.bodyHitsToOut) {
+          dismissal = {
+            type: 'bodyout',
+            playerOutId: strikerId,
+            automatic: true,
+            bowlerCredited: true,
+            fielderId: null,
+          };
+          newBatsmanTookGuard = applyDismissal(s, dismissal, bowlerId, input.newBatsmanId);
+        }
       }
-    }
 
-    if (!dismissal) {
-      if (batRuns > 0) {
-        // R16 — any run scored resets the streak and clears a carried flag.
-        striker.dotStreak = 0;
-        striker.nextDotDismisses = false;
-      } else {
+      if (!dismissal) {
         // A body hit is 0 off the bat, so it is also a dot (R17).
         striker.dotStreak += 1;
         const out =
@@ -614,11 +623,9 @@ export function applyDelivery(
   } else if (
     // R16a — a run out on the striker's out-defining dot is not itself a dot.
     // The streak carries, and R16b decides what happens to it.
-    dismissal &&
     dismissal.type === 'runout' &&
     dismissal.playerOutId !== strikerId &&
     isLegalBall &&
-    !wasFreeHit &&
     rules.threeDotOut &&
     striker.dotStreak === rules.dotsToOut - 1
   ) {

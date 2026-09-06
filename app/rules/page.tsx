@@ -191,8 +191,14 @@ const SECTIONS: Array<{ title: string; body: React.ReactNode }> = [
           Two optional rules, switched on per league: <b>three dots in a row</b> and{' '}
           <b>three body hits</b>. Both dismiss the batsman and both are credited to the bowler; the
           app records them by itself, so the scorer never has to. A body hit is a dead ball worth
-          nothing, so it also counts as a dot. Wides and no balls leave both counters untouched —
-          they neither add to a streak nor break one.
+          nothing, so it also counts as a dot.
+        </p>
+        <p>
+          The dot streak works like this. <b>Only a legal ball can add to it</b>, so a wide or a no
+          ball that is missed leaves it exactly where it was. But <b>runs off the bat clear it</b>,
+          whatever kind of ball they came from — score off a no ball and you are back to nothing.
+          And a <b>free hit still counts</b>: it protects you from the bowler, not from the dot
+          rule, so a batsman on two who plays out a free hit is out for his third.
         </p>
         <p>
           Two batsmen can never be out on the same ball. If a run is attempted on what would have
