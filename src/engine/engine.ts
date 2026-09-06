@@ -314,6 +314,21 @@ export function applyEvent(
       return s;
     }
 
+    // R16 — the scorer corrects a dot count the log got wrong.
+    case 'dot_count_set': {
+      const b = s.batsmen[event.playerId];
+      if (!b) throw new EngineError('That player is not in the batting order', 'R1');
+      const dots = Math.max(0, Math.min(rules.dotsToOut - 1, Math.floor(event.dots)));
+      b.dotStreak = dots;
+      // Setting it below the threshold also lifts a carried or sudden-death
+      // flag, otherwise the next dot would still dismiss him.
+      if (dots < rules.dotsToOut - 1) {
+        b.nextDotDismisses = false;
+        b.suddenDeath = false;
+      }
+      return s;
+    }
+
     // R27 — a retired-hurt batsman resumes from where he left off.
     case 'retired_hurt_returned': {
       const b = s.batsmen[event.playerId];

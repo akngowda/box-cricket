@@ -1197,3 +1197,35 @@ describe('R20 — undoing balls gives the bowler his over back', () => {
     expect(undone.bowlers.o1?.oversCompleted).toBeLessThan(r.maxOversPerBowler);
   });
 })
+
+describe('R16 — correcting a dot count by hand', () => {
+  it('a batsman wrongly on two dots can be put back, and is not then dismissed', () => {
+    const r = rules({ threeDotOut: true });
+    let s = bowlMany(innings(), [DOT, DOT], r).state;
+    expect(s.batsmen.b1?.dotStreak).toBe(2);
+
+    // The scorer says that is wrong: he has faced one dot, not two.
+    s = applyEvent(s, { type: 'dot_count_set', playerId: 'b1', dots: 1 }, r);
+    expect(s.batsmen.b1?.dotStreak).toBe(1);
+
+    // The next dot is his second, not his third — so he survives.
+    const next = bowl(s, DOT, r);
+    expect(next.result.wicket).toBeNull();
+    expect(next.state.batsmen.b1?.dotStreak).toBe(2);
+  });
+
+  it('clearing the count also lifts a carried "next dot dismisses"', () => {
+    const r = rules({ threeDotOut: true, dotCarryMode: 'carry' });
+    let s = bowlMany(innings(), [DOT, DOT], r).state;
+    s = bowl(s, {
+      physicalRuns: 1,
+      wicket: { type: 'runout', playerOutId: 'b2', newBatsmanId: 'b3', newBatsmanOnStrike: false },
+    }, r).state;
+    expect(s.batsmen.b1?.nextDotDismisses).toBe(true);
+
+    s = applyEvent(s, { type: 'dot_count_set', playerId: 'b1', dots: 0 }, r);
+    expect(s.batsmen.b1?.nextDotDismisses).toBe(false);
+    if (s.strikerId !== 'b1') s = applyEvent(s, { type: 'strike_switched_manually' }, r);
+    expect(bowl(s, DOT, r).result.wicket).toBeNull();
+  });
+})

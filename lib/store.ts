@@ -808,6 +808,66 @@ export function voidLastBall(db: DB, inningsId: string): DB {
   );
 }
 
+/**
+ * Void or restore any ball, not only the last one.
+ *
+ * Mistakes surface an over later, when the scorer looks up and the total is
+ * wrong. The log is append-only, so nothing is erased: the ball is marked
+ * voided and the innings replays without it, and un-voiding puts it back.
+ * Everything downstream — the bowler's figures, who faced what — is re-derived
+ * from the log, so the correction lands on the right players by itself.
+ */
+export function setBallVoided(db: DB, deliveryId: string, voided: boolean): DB {
+  const ball = db.deliveries.find((d) => d.id === deliveryId);
+  if (!ball) return db;
+  return logActivity(
+    {
+      ...db,
+      deliveries: db.deliveries.map((d) => (d.id === deliveryId ? { ...d, is_voided: voided } : d)),
+    },
+    voided ? 'ball_voided' : 'ball_restored',
+    `over ${ball.over_no}.${ball.ball_no}, ${ball.team_runs} run${ball.team_runs === 1 ? '' : 's'}`,
+  );
+}
+
+/**
+ * Change what a ball was worth, in place.
+ *
+ * Safer than voiding and re-scoring, because the ball keeps its position in
+ * the over, so the same bowler and the same batsman keep it. Only the runs
+ * change. Everything after is replayed, so if the correction changes the
+ * strike — an odd number of runs where there had been none — the rest of the
+ * innings re-derives accordingly, which is the honest answer.
+ */
+export function amendBall(
+  db: DB,
+  deliveryId: string,
+  patch: { declared_runs: number; contact: 'pitched' | 'direct' | 'none'; physical_runs: number },
+): DB {
+  const ball = db.deliveries.find((d) => d.id === deliveryId);
+  if (!ball) return db;
+  return logActivity(
+    {
+      ...db,
+      deliveries: db.deliveries.map((d) =>
+        d.id === deliveryId
+          ? {
+              ...d,
+              declared_runs: patch.declared_runs,
+              contact: patch.contact,
+              physical_runs: patch.physical_runs,
+              // The stored totals are recomputed on replay; keep the row
+              // honest in the meantime.
+              zone: patch.declared_runs === 0 ? 0 : d.zone,
+            }
+          : d,
+      ),
+    },
+    'ball_amended',
+    `over ${ball.over_no}.${ball.ball_no}`,
+  );
+}
+
 export function appendEvent(
   db: DB,
   matchId: string,

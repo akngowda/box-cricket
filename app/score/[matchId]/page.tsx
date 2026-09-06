@@ -1138,16 +1138,32 @@ function RosterSheet({
   );
 }
 
-/** The innings cannot start until the openers and the first bowler are known. */
+/**
+ * Openers and the first bowler.
+ *
+ * One list, not two: tap the two men going out and the first one tapped takes
+ * strike. Two lists meant reading the same names twice and deciding "striker"
+ * and "non-striker" separately, which is not how anyone thinks about it — you
+ * just know who is opening. Strike can be swapped on the pad anyway.
+ */
 function StartInnings({ db, match, innings }: { db: DB; match: MatchRow; innings: InningsRow }) {
   const mutate = useMutate();
   const batting = squadMembers(db, innings.batting_squad_id);
   const bowling = squadMembers(db, innings.bowling_squad_id);
-  const [striker, setStriker] = useState(batting[0]?.id ?? '');
-  const [nonStriker, setNonStriker] = useState(batting[1]?.id ?? '');
-  const [bowler, setBowler] = useState(bowling[0]?.id ?? '');
+  const [openers, setOpeners] = useState<string[]>([]);
+  const [bowler, setBowler] = useState('');
 
-  const ready = striker && nonStriker && bowler && striker !== nonStriker;
+  const pick = (id: string): void =>
+    setOpeners((current) =>
+      current.includes(id)
+        ? current.filter((x) => x !== id)
+        : current.length < 2
+          ? [...current, id]
+          : [current[1] as string, id], // a third tap replaces the older pick
+    );
+
+  const [strikerId, nonStrikerId] = openers;
+  const ready = openers.length === 2 && bowler !== '';
 
   return (
     <div className="app">
@@ -1158,12 +1174,31 @@ function StartInnings({ db, match, innings }: { db: DB; match: MatchRow; innings
             Chasing <b>{innings.target}</b>.
           </div>
         )}
-        <div className="lbl">On strike</div>
-        <Picker options={batting} value={striker} onPick={setStriker} />
-        <div className="lbl">Non-striker</div>
-        <Picker options={batting.filter((p) => p.id !== striker)} value={nonStriker} onPick={setNonStriker} />
+
+        <div className="lbl">
+          The two opening batsmen — <b>first tapped takes strike</b>
+        </div>
+        <div className="grid3">
+          {batting.map((p) => {
+            const at = openers.indexOf(p.id);
+            return (
+              <Opt key={p.id} on={at >= 0} onTap={() => pick(p.id)} style={{ fontSize: 12 }}>
+                {p.name}
+                {at === 0 && <small>on strike</small>}
+                {at === 1 && <small>other end</small>}
+              </Opt>
+            );
+          })}
+        </div>
+
         <div className="lbl">Opening bowler</div>
-        <Picker options={bowling} value={bowler} onPick={setBowler} />
+        <div className="grid3">
+          {bowling.map((p) => (
+            <Opt key={p.id} on={bowler === p.id} onTap={() => setBowler(p.id)} style={{ fontSize: 12 }}>
+              {p.name}
+            </Opt>
+          ))}
+        </div>
 
         <Btn
           className="btn primary"
@@ -1172,37 +1207,20 @@ function StartInnings({ db, match, innings }: { db: DB; match: MatchRow; innings
           onTap={() =>
             mutate((d) =>
               appendEvent(d, match.id, innings.id, 'innings_start', {
-                strikerId: striker,
-                nonStrikerId: nonStriker,
+                strikerId,
+                nonStrikerId,
                 bowlerId: bowler,
               }),
             )
           }
         >
-          Start the innings
+          {openers.length < 2
+            ? `Pick ${2 - openers.length} more batsman${openers.length === 1 ? '' : 'men'}`
+            : bowler === ''
+              ? 'Pick the opening bowler'
+              : 'Start the innings'}
         </Btn>
       </div>
-    </div>
-  );
-}
-
-function Picker({
-  options,
-  value,
-  onPick,
-}: {
-  options: Array<{ id: string; name: string }>;
-  value: string;
-  onPick: (id: string) => void;
-}) {
-  const sorted = [...options].sort((a, b) => a.name.localeCompare(b.name));
-  return (
-    <div className="grid3">
-      {sorted.map((p) => (
-        <Opt key={p.id} on={value === p.id} onTap={() => onPick(p.id)} style={{ fontSize: 12 }}>
-          {p.name}
-        </Opt>
-      ))}
     </div>
   );
 }

@@ -244,7 +244,7 @@ create table if not exists public.match_events (
                 'impact_over_declared', 'impact_over_undone', 'last_man_activated',
                 'deadrunner_set', 'strike_switched_manually', 'bowler_selected',
                 'bowler_replaced_midover', 'retired_out', 'retired_hurt',
-                'retired_hurt_returned', 'batsman_corrected', 'ball_voided', 'innings_start',
+                'retired_hurt_returned', 'batsman_corrected', 'dot_count_set', 'ball_voided', 'innings_start',
                 'innings_end', 'match_end')),
   payload    jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
@@ -958,4 +958,49 @@ drop policy if exists series_delete_test_only on public.series;
 create policy series_delete_test_only on public.series
   for delete to authenticated
   using (public.is_admin() and is_test);
+
+
+-- ==========================================================
+-- supabase/migrations/0006_amend_ball.sql
+-- ==========================================================
+-- Correcting a ball after the fact.
+--
+-- The log stays append-only in the way that matters: a ball keeps its place,
+-- its over, its bowler and its batsman for ever, and nothing is deleted. What
+-- an admin may now change is what the ball was WORTH — because a scorer
+-- notices a wrong total an over later, and the alternative was re-scoring the
+-- rest of the innings.
+--
+-- Every correction is written to the activity log by the app, so the change is
+-- itself part of the history.
+
+create or replace function public.deliveries_append_only()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  fixed_before jsonb;
+  fixed_after  jsonb;
+begin
+  -- Everything except the run fields and the void flag is immutable.
+  fixed_before := to_jsonb(old) - 'is_voided' - 'declared_runs' - 'physical_runs'
+                  - 'contact' - 'zone' - 'team_runs' - 'batsman_runs' - 'bowler_conceded';
+  fixed_after  := to_jsonb(new) - 'is_voided' - 'declared_runs' - 'physical_runs'
+                  - 'contact' - 'zone' - 'team_runs' - 'batsman_runs' - 'bowler_conceded';
+
+  if fixed_before is distinct from fixed_after then
+    raise exception 'a delivery keeps its over, its bowler and its batsman (R7d)';
+  end if;
+
+  -- Changing what it was worth is an admin correction, not ordinary scoring.
+  if (to_jsonb(old) - 'is_voided') is distinct from (to_jsonb(new) - 'is_voided')
+     and not public.is_admin() then
+    raise exception 'only an admin can correct a scored ball';
+  end if;
+
+  return new;
+end;
+$$;
 

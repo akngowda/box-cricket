@@ -298,7 +298,16 @@ export type MatchEvent =
    * from here on; runs already recorded stay with whoever they were credited
    * to, because the log is what happened, not what should have happened.
    */
-  | { type: 'batsman_corrected'; outgoingId: string; incomingId: string };
+  | { type: 'batsman_corrected'; outgoingId: string; incomingId: string }
+  /**
+   * R16 — set a batsman's dot streak by hand.
+   *
+   * The counter is derived from the log, so if the log is wrong the count is
+   * wrong, and the batsman is dismissed for something he did not do. This is
+   * the scorer overruling it: it is recorded as an event, so the correction is
+   * itself part of the history rather than a silent edit.
+   */
+  | { type: 'dot_count_set'; playerId: string; dots: number };
 
 export class EngineError extends Error {
   override readonly name = 'EngineError';

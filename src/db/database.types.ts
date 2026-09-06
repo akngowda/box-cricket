@@ -34,6 +34,7 @@ export type MatchEventType =
   | 'retired_hurt'
   | 'retired_hurt_returned'
   | 'batsman_corrected'
+  | 'dot_count_set'
   | 'ball_voided'
   | 'innings_start'
   | 'innings_end'
