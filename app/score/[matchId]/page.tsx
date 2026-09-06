@@ -375,172 +375,137 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
         />
       ) : (
         <div className="pad" style={{ marginTop: 12 }}>
-          <div className="key" style={{ marginBottom: 8 }}>
-            <span><i style={{ background: 'var(--sodium)' }} />pitched</span>
-            <span><i style={{ background: '#E8663A' }} />direct</span>
-            <span><i style={{ background: 'var(--cool)' }} />physical</span>
-          </div>
-
-          {/* Row 1 — declared, two rows, two colours */}
-          <div className="lbl">
-            Declared runs{' '}
-            <span style={{ opacity: 0.6 }}>— row shows pitched vs direct · zone 0 = Dot</span>
-          </div>
-          {(
-            [
-              [[1, 2, 3], 'pitched'],
-              [[2, 4, 6], 'direct'],
-            ] as Array<[DeclaredRuns[], Contact]>
-          ).map(([vals, contact], rowIdx) => (
-            <div
-              key={contact}
-              style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 9, marginTop: rowIdx ? 8 : 0 }}
+          {/* The court. Columns are zones 1, 2 and 3 running away from the
+              batsman; the top row is pitched, the bottom direct; the strip
+              through the middle is the pitch, tapped once per run they ran. */}
+          <div className="court">
+            <Key
+              className="k-wide extra"
+              on={wideSel}
+              disabled={dis.wide}
+              onTap={() => setSel((s) => (s.extra === 'wide' ? EMPTY : { ...EMPTY, extra: 'wide' }))}
             >
-              {vals.map((v, i) => (
-                <button
-                  key={`${contact}${v}`}
-                  className={`declbtn ${contact} ${sel.declared === v && sel.contact === contact ? 'on' : ''}`}
-                  disabled={dis.runs}
-                  {...tapProps(() => setSel((s) =>
-                      s.declared === v && s.contact === contact
-                        ? { ...s, declared: null, contact: 'none' }
-                        : { ...s, declared: v, contact },
-                    )
-                  )}
-                >
-                  {v}
-                  <small>zone {i + 1}</small>
-                </button>
-              ))}
-            </div>
-          ))}
-
-          {/* Row 2 — physical runs, Dot first */}
-          <div className="lbl">
-            Physical runs <span style={{ opacity: 0.6 }}>— tap again to clear back to 0</span>
-          </div>
-          <div className="grid3">
-            <button
-              className={`physbtn dotbtn ${sel.dot ? 'on' : ''}`}
-              disabled={dis.dot}
-              {...tapProps(() => setSel((s) => (s.dot ? EMPTY : { ...EMPTY, dot: true })))}
-            >
-              Dot<small>{dotLocked ? 'body hit' : '0 & 0'}</small>
-            </button>
-            <button
-              className={`physbtn ${sel.phys === 1 ? 'on' : ''}`}
-              disabled={dis.runs}
-              {...tapProps(() => setSel((s) => ({ ...s, phys: s.phys === 1 ? 0 : 1 })))}
-            >
-              1
-            </button>
-            <button
-              className={`physbtn ${sel.phys > 1 ? 'on' : ''}`}
-              disabled={dis.runs}
-              {...tapProps(() => (sel.phys > 1 ? setSel((s) => ({ ...s, phys: 0 })) : setSheet('phys')))}
-            >
-              {sel.phys > 1 ? (
-                <>
-                  {sel.phys}
-                  <small>ran{sel.phys % 2 === 1 ? ' · strike ↔' : ''}</small>
-                </>
-              ) : (
-                <>
-                  custom<small>&lt;10</small>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Extras, body, wicket and undo — under the runs, because the runs
-              are what gets tapped on nearly every ball. The gap keeps a
-              mis-aimed thumb off the wicket button. */}
-          <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: `repeat(${rules.threeBodyOut ? 5 : 4},1fr)`, gap: 9 }}>
-            <Opt on={wideSel} disabled={dis.wide} onTap={() => setSel((s) => (s.extra === 'wide' ? EMPTY : { ...EMPTY, extra: 'wide' }))}>
               Wide<small>{rules.wideRuns}</small>
-            </Opt>
-            <Opt on={nbSel} disabled={dis.noball} onTap={() => setSel((s) => (s.extra === 'noball' ? { ...s, extra: 'none' } : { ...s, extra: 'noball', dot: false, body: false }))}>
+            </Key>
+
+            {(
+              [
+                ['k-z1p', 1, 'pitched', 1],
+                ['k-z2p', 2, 'pitched', 2],
+                ['k-z3p', 3, 'pitched', 3],
+                ['k-z1d', 2, 'direct', 1],
+                ['k-z2d', 4, 'direct', 2],
+                ['k-z3d', 6, 'direct', 3],
+              ] as Array<[string, DeclaredRuns, Contact, number]>
+            ).map(([cell, value, contact, zone]) => (
+              <Key
+                key={cell}
+                className={`${cell} ${contact}`}
+                on={sel.declared === value && sel.contact === contact}
+                disabled={dis.runs || (sel.declared !== null && sel.contact !== contact) ||
+                          (sel.declared !== null && sel.declared !== value && sel.contact === contact)}
+                onTap={() =>
+                  setSel((s) =>
+                    s.declared === value && s.contact === contact
+                      ? { ...s, declared: null, contact: 'none' }
+                      : { ...s, declared: value, contact },
+                  )
+                }
+              >
+                {value}
+                <small>zone {zone}</small>
+              </Key>
+            ))}
+
+            {/* The pitch is an add-on: it never blocks a zone, and each tap is
+                one run they ran. */}
+            <Key
+              className="k-pitch pitch"
+              on={sel.phys > 0}
+              disabled={dis.runs}
+              onTap={() => setSel((s) => ({ ...s, phys: Math.min(9, s.phys + 1) }))}
+              onHold={() => setSel((s) => ({ ...s, phys: 0 }))}
+            >
+              {sel.phys > 0 ? `+${sel.phys}` : '+'}
+              <small>{sel.phys > 0 ? 'tap to add · hold to clear' : 'tap once per run'}</small>
+            </Key>
+
+            <Key
+              className="k-noball extra"
+              on={nbSel}
+              disabled={dis.noball}
+              onTap={() =>
+                setSel((s) =>
+                  s.extra === 'noball' ? { ...s, extra: 'none' } : { ...s, extra: 'noball', dot: false, body: false },
+                )
+              }
+            >
               No ball<small>{rules.noBallRuns}</small>
-            </Opt>
-            {/* R17a — the Body marker exists only when the rule is on. */}
-            {rules.threeBodyOut && (
-              <Opt on={sel.body} disabled={dis.body} onTap={() => setSel((s) => (s.body ? EMPTY : { ...EMPTY, body: true, dot: true }))}>
-                Body<small>hit pad</small>
-              </Opt>
-            )}
-            <Opt disabled={dis.wicket} onTap={() => setSheet('wicket')} style={{ color: 'var(--strike)', fontSize: 13 }}>
-              Wicket
-            </Opt>
-            <Opt onTap={undo} style={{ fontSize: 13 }}>Undo</Opt>
+            </Key>
           </div>
 
-          {/* The live total for this ball */}
-          <div className="preview" style={{ marginTop: 13 }}>
-            <Total sel={sel} preview={preview} rules={rules} />
-            <div style={{ marginTop: 3, fontSize: 11 }}>
-              {wideSel
-                ? 're-bowled'
-                : sel.dot
-                  ? 'counts as a dot'
-                  : `${preview?.strikeChanged ? 'strike changes' : 'same batsman on strike'}${
-                      state.lastManActive ? ' · last man faces every ball' : ''
-                    }`}
-            </div>
-          </div>
-
-          <Btn
-            className="btn primary"
-            style={{ margin: '13px 0 6px', ...(preview?.isImpactBall ? { background: 'var(--strike)', color: '#fff' } : {}) }}
-            disabled={needsBowler}
-            buzz={preview?.wicket ? [30, 50, 30] : 10}
-            onTap={() => commit()}
-          >
-            {needsBowler
-              ? 'Pick a bowler first'
-              : preview?.wicket
-                ? `Score — ${WICKET_LABEL[preview.wicket.type]}`
-                : preview?.isImpactBall
-                  ? 'Score impact ball ×2'
-                  : 'Score'}
-          </Btn>
-
-          <div className="grid3" style={{ marginBottom: 8 }}>
-            <Btn className="btn ghost" style={{ fontSize: 12, padding: '11px 4px' }} onTap={() => event('strike_switched_manually')}>
-              Switch strike
-            </Btn>
-            <Btn className="btn ghost" style={{ fontSize: 12, padding: '11px 4px' }} onTap={() => setSheet('bowler')}>
-              Bowler
-            </Btn>
-            <Btn className="btn ghost" style={{ fontSize: 12, padding: '11px 4px' }} onTap={() => setSheet('roster')}>
-              Roster
-            </Btn>
-          </div>
-
-          {/* R20 / R20e */}
-          {rules.impactOverAllowed &&
-            (state.impactOverNumber === null ? (
-              <>
-                <Btn
-                  className="btn ghost"
+          {/* Impact over · Dot · Wicket · Undo */}
+          <div className="krow" style={{ gridTemplateColumns: `repeat(${rules.threeBodyOut ? 5 : 4},1fr)` }}>
+            {rules.impactOverAllowed &&
+              (state.impactOverNumber === null ? (
+                <Key
                   disabled={inOver > 0 || over >= rules.oversPerInnings - 1}
                   onTap={() => event('impact_over_declared', { overNo: inOver > 0 ? over + 1 : over })}
                 >
-                  {inOver > 0 ? 'Declare impact over (only between overs)' : `Declare impact over ${over + 1}`}
-                </Btn>
-                <div className="hint" style={{ margin: '7px 0 20px', textAlign: 'center' }}>
-                  Nothing declared yet — the last over (over {rules.oversPerInnings}) doubles by default.
-                </div>
-              </>
-            ) : (
-              <Btn
-                className="btn ghost"
-                style={{ marginBottom: 20 }}
-                disabled={state.impactOverNumber < over || (state.impactOverNumber === over && inOver > 0)}
-                onTap={() => event('impact_over_undone')}
+                  Impact over<small>over {over + 1}</small>
+                </Key>
+              ) : (
+                <Key
+                  on
+                  disabled={state.impactOverNumber < over || (state.impactOverNumber === over && inOver > 0)}
+                  onTap={() => event('impact_over_undone')}
+                >
+                  Undo impact<small>over {state.impactOverNumber + 1}</small>
+                </Key>
+              ))}
+
+            <Key on={sel.dot} disabled={dis.dot} onTap={() => setSel((s) => (s.dot ? EMPTY : { ...EMPTY, dot: true }))}>
+              Dot<small>{dotLocked ? 'body hit' : '0 & 0'}</small>
+            </Key>
+
+            {rules.threeBodyOut && (
+              <Key
+                on={sel.body}
+                disabled={dis.body}
+                onTap={() => setSel((s) => (s.body ? EMPTY : { ...EMPTY, body: true, dot: true }))}
               >
-                Undo impact over {state.impactOverNumber + 1}
-              </Btn>
-            ))}
+                Body<small>hit pad</small>
+              </Key>
+            )}
+
+            <Key className="danger" disabled={dis.wicket} onTap={() => setSheet('wicket')}>
+              Wicket
+            </Key>
+
+            <Key onTap={undo}>Undo</Key>
+          </div>
+
+          {/* Runs on this ball, and the commit. */}
+          <div className="krow" style={{ gridTemplateColumns: '1.3fr 1fr' }}>
+            <div className="k total" style={{ pointerEvents: 'none' }}>
+              {preview ? `${preview.teamRuns} run${preview.teamRuns === 1 ? '' : 's'}` : '—'}
+              <small>{preview ? ballSummary(sel, preview) : 'pick a bowler'}</small>
+            </div>
+            <Key
+              className="save"
+              disabled={needsBowler || done}
+              onTap={() => commit()}
+              buzz={preview?.wicket ? [30, 50, 30] : 10}
+            >
+              {preview?.wicket ? WICKET_LABEL[preview.wicket.type] : preview?.isImpactBall ? 'Save ×2' : 'Save'}
+            </Key>
+          </div>
+
+          <div className="krow" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+            <Key onTap={() => event('strike_switched_manually')}>Switch side</Key>
+            <Key onTap={() => setSheet('bowler')}>Bowler</Key>
+            <Key onTap={() => setSheet('roster')}>Roster</Key>
+          </div>
 
           {/* R25a — the last man needs someone to run for him. */}
           {state.lastManActive && rules.lastManHasDeadrunner && !state.deadrunnerId && (
@@ -671,6 +636,72 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
 }
 
 // --- pieces -----------------------------------------------------------------
+
+/**
+ * A raised key on the court.
+ *
+ * Tap discrimination lives here too: a drag scrolls, a tap presses. A long
+ * press is a second gesture — the pitch uses it to clear the runs it has
+ * collected, so there is no separate reset button taking up room.
+ */
+function Key({
+  children,
+  className = '',
+  on,
+  disabled,
+  onTap,
+  onHold,
+  buzz,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  on?: boolean;
+  disabled?: boolean;
+  onTap: () => void;
+  onHold?: () => void;
+  buzz?: number | number[];
+}) {
+  const down = useRef<{ x: number; y: number; t: number } | null>(null);
+  const held = useRef(false);
+  const timer = useRef<number | null>(null);
+
+  const clear = (): void => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+    down.current = null;
+  };
+
+  return (
+    <button
+      className={`k ${className} ${on ? 'on' : ''}`}
+      disabled={disabled}
+      onPointerDown={(e) => {
+        down.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+        held.current = false;
+        if (onHold) {
+          timer.current = window.setTimeout(() => {
+            held.current = true;
+            navigator.vibrate?.(20);
+            onHold();
+          }, 550);
+        }
+      }}
+      onPointerUp={(e) => {
+        const from = down.current;
+        clear();
+        if (!from || held.current) return;
+        const moved = Math.hypot(e.clientX - from.x, e.clientY - from.y);
+        if (moved > 12) return; // that was a scroll
+        navigator.vibrate?.(buzz ?? 10);
+        onTap();
+      }}
+      onPointerCancel={clear}
+      onPointerLeave={clear}
+    >
+      {children}
+    </button>
+  );
+}
 
 function Opt({
   children,
@@ -1268,6 +1299,20 @@ function tryApplyFull(
   } catch {
     return null;
   }
+}
+
+/** The one-line reading of what is currently on the pad. */
+function ballSummary(sel: Selection, r: DeliveryResult): string {
+  if (sel.extra === 'wide') return 'wide — re-bowled, nothing off the bat';
+  const bits: string[] = [];
+  if (sel.extra === 'noball') bits.push('no ball');
+  if (sel.body) bits.push('body hit');
+  if (sel.declared !== null) bits.push(`${sel.declared} ${sel.contact} · zone ${r.zone}`);
+  if (sel.phys > 0) bits.push(`${sel.phys} ran`);
+  if (sel.dot && !sel.body) bits.push('dot');
+  if (r.multiplier === 2 && r.batRuns > 0) bits.push('doubled');
+  bits.push(r.strikeChanged ? 'strike changes' : 'same end');
+  return bits.join(' · ');
 }
 
 function token(r: DeliveryResult): string {
