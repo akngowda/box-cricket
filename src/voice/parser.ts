@@ -248,10 +248,16 @@ export function parseCommand(input: string, ctx: ParseContext): Command {
 
     const after = words.slice(i + 1, i + 3).join(' ');
     const before = words.slice(Math.max(0, i - 3), i).join(' ');
+    const justBefore = words[i - 1] ?? '';
+
+    // Word order decides. "runs 1" is running — the verb comes first. "6 runs"
+    // is what it was worth — the number comes first. Getting this backwards
+    // turned "no ball 6 runs" into six byes.
+    const ranIt = /^(ran|run|runs|running|took|scored)$/.test(justBefore);
 
     if (/\b(d|declare|declared|zone)\b/.test(after) || /\b(hits?|hit)\b/.test(before)) {
       declared = n;
-    } else if (/\b(ran|runs?|running|took)\b/.test(before) || /\b(ran|run|runs)\b/.test(after)) {
+    } else if (ranIt) {
       physical = n;
     } else if (patch.extra !== undefined) {
       // "no ball 6" — a number beside an extra is what came off the bat.

@@ -541,11 +541,17 @@ select.field {
   font-weight: 600;
 }
 
+/* The batsmen and bowler boxes sit above the court, so they are raised the
+   same way — one surface for the whole pad rather than two. */
 .statbox {
-  background: var(--turf2);
+  background: linear-gradient(#22342a, #16241c);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 9px 11px;
+  border-radius: 12px;
+  box-shadow:
+    0 3px 0 #0d1611,
+    0 4px 8px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  padding: 10px 12px;
   flex: 1;
   min-width: 0;
 }

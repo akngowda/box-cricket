@@ -33,6 +33,8 @@ import {
   type DB,
 } from '../../../lib/store';
 import { requestSync } from '../../../lib/sync';
+import { listen, loadVoiceMode, saveVoiceMode, voiceSupported, type VoiceMode } from '../../../lib/voice';
+import { parseCommand, type Player } from '../../../src/voice/parser';
 import { Btn, Sheet, tapProps, TopBar } from '../../../lib/ui';
 import { toDeliveryRow } from '../../../src/db/mappers';
 import {
@@ -147,11 +149,24 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const [audio, setAudio] = useState(rules.audioPerBall);
   const [fixing, setFixing] = useState<string | null>(null);
   const [fixingDots, setFixingDots] = useState<string | null>(null);
+  const [voice, setVoice] = useState<VoiceMode>('off');
+  const [heard, setHeard] = useState<string | null>(null);
+  useEffect(() => setVoice(loadVoiceMode()), []);
   const [autoIn, setAutoIn] = useState<string | null>(null);
   const spoken = useRef<string | null>(null);
+  // The handler closes over live state, so the listener reads it through a ref
+  // rather than being torn down and restarted on every ball.
+  const handleSpokenRef = useRef<((phrase: string) => void) | null>(null);
 
   const board = current ? scoreboard(db, current, rules) : null;
   const opening = current ? openingOf(db, current.id) : null;
+
+  // The microphone follows the setting, and nothing else turns it on.
+  useEffect(() => {
+    if (voice === 'off' || !voiceSupported()) return;
+    const session = listen((phrase) => handleSpokenRef.current?.(phrase));
+    return () => session.stop();
+  }, [voice]);
 
   // R30 — announce the over just finished.
   useEffect(() => {
@@ -227,6 +242,8 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const impactBallNext =
     rules.impactBallAllowed && state.legalBalls === rules.oversPerInnings * rules.ballsPerOver - 1;
   const isImpactOver = impactOverOf(state, rules) === over;
+  /** Declared, bowled, and gone — one per innings, so there is no second. */
+  const impactOverSpent = state.impactOverNumber !== null && state.impactOverNumber < over;
 
   /** Who is left to walk in, by name, so the list reads the same every time. */
   const availableBatsmen = state.battingOrder
@@ -293,11 +310,93 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
 
   const thisOver = results.filter((r) => r.overNo === over);
 
+  /**
+   * What a spoken phrase does.
+   *
+   * In assist mode voice only ever FILLS the pad — the scorer still taps Save,
+   * so a mis-heard ball cannot write itself. Hands-free lets the words commit
+   * and undo as well, which is what makes it hands-free and also what makes it
+   * the riskier of the two.
+   */
+  const handleSpoken = (phrase: string): void => {
+    setHeard(phrase);
+    const squad: Player[] = [
+      ...squadMembers(db, current.batting_squad_id),
+      ...squadMembers(db, current.bowling_squad_id),
+    ].map((p) => ({ id: p.id, name: p.name }));
+
+    const command = parseCommand(phrase, {
+      squad,
+      available: availableBatsmen.map((id) => ({ id, name: playerName(db, id) })),
+      bowlers: state.bowlingSquad.map((id) => ({ id, name: playerName(db, id) })),
+    });
+
+    const speakBack = (line: string): void => {
+      if (voice === 'hands_free') speak(line);
+    };
+
+    switch (command.kind) {
+      case 'ball':
+        setSel((cur) => ({
+          ...cur,
+          ...(command.patch.declared !== undefined ? { declared: command.patch.declared } : {}),
+          ...(command.patch.contact !== undefined ? { contact: command.patch.contact } : {}),
+          ...(command.patch.physical !== undefined ? { phys: command.patch.physical } : {}),
+          ...(command.patch.extra !== undefined ? { extra: command.patch.extra } : {}),
+          ...(command.patch.body !== undefined ? { body: command.patch.body } : {}),
+        }));
+        speakBack(command.say);
+        return;
+      case 'wicket':
+        setSheet('wicket');
+        speakBack('wicket');
+        return;
+      case 'newBatsman':
+        setAutoIn(command.playerId);
+        speakBack(command.say);
+        return;
+      case 'bowler':
+        event(inOver > 0 ? 'bowler_replaced_midover' : 'bowler_selected', {
+          bowlerId: command.playerId,
+        });
+        speakBack(command.say);
+        return;
+      case 'impactOver':
+        event(command.on ? 'impact_over_declared' : 'impact_over_undone', { overNo: over });
+        speakBack(command.say);
+        return;
+      case 'switchStrike':
+        event('strike_switched_manually');
+        speakBack(command.say);
+        return;
+      case 'clear':
+        setSel(EMPTY);
+        speakBack('cleared');
+        return;
+      case 'commit':
+        // Only hands-free may write a ball on its own.
+        if (voice === 'hands_free') commit();
+        else speak('tap save to score it');
+        return;
+      case 'undo':
+        if (voice === 'hands_free') undo();
+        else speak('tap undo');
+        return;
+      case 'ambiguous':
+        speak(command.reason);
+        return;
+      default:
+        speakBack('I did not catch that');
+    }
+  };
+
   /** The ball the next undo would take back. */
   const lastBall = db.deliveries
     .filter((d) => d.innings_id === current.id && !d.is_voided)
     .sort((a, b) => a.seq - b.seq)
     .at(-1);
+
+  handleSpokenRef.current = handleSpoken;
 
   return (
     <div className="app">
@@ -356,21 +455,6 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             ✕ {preview.wicket.type === 'dotout' ? '3rd straight dot' : '3rd body hit'} —{' '}
             {playerName(db, preview.wicket.playerOutId)} <b>will be out</b> when you save (
             {WICKET_LABEL[preview.wicket.type]})
-          </div>
-          <div className="pad" style={{ paddingTop: 8 }}>
-            <div className="lbl" style={{ margin: '0 0 4px' }}>Who comes in?</div>
-            <select
-              className="field"
-              value={autoIn ?? ''}
-              onChange={(e) => setAutoIn(e.target.value || null)}
-            >
-              <option value="">Next in the order</option>
-              {availableBatsmen.map((id) => (
-                <option key={id} value={id}>
-                  {playerName(db, id)}
-                </option>
-              ))}
-            </select>
           </div>
         </>
       )}
@@ -561,7 +645,15 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
               gridTemplateColumns: rules.threeBodyOut ? '1fr 1fr 2fr 1fr' : '1fr 2fr 1fr',
             }}
           >
+            {rules.impactOverAllowed && impactOverSpent ? (
+              <Key disabled on onTap={() => undefined}>
+                Impact used
+                <small>over {(state.impactOverNumber ?? 0) + 1}</small>
+              </Key>
+            ) : null}
+
             {rules.impactOverAllowed &&
+              !impactOverSpent &&
               (state.impactOverNumber === null ? (
                 <Key
                   disabled={inOver > 0 || over >= rules.oversPerInnings - 1}
@@ -624,6 +716,47 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             <Key onTap={() => setSheet('bowler')}>Bowler</Key>
             <Key onTap={() => setSheet('roster')}>Roster</Key>
           </div>
+
+          {/* Voice — an experiment, off unless it is turned on. */}
+          <div className="krow" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+            {(
+              [
+                ['off', 'Voice off'],
+                ['assist', 'Voice fills'],
+                ['hands_free', 'Voice scores'],
+              ] as Array<[VoiceMode, string]>
+            ).map(([mode, label]) => (
+              <Key
+                key={mode}
+                on={voice === mode}
+                disabled={mode !== 'off' && !voiceSupported()}
+                onTap={() => {
+                  setVoice(mode);
+                  saveVoiceMode(mode);
+                  setHeard(null);
+                }}
+              >
+                {label}
+                <small>
+                  {mode === 'off'
+                    ? 'tapping only'
+                    : mode === 'assist'
+                      ? 'you tap save'
+                      : 'it saves too'}
+                </small>
+              </Key>
+            ))}
+          </div>
+
+          {voice !== 'off' && (
+            <div className="hint" style={{ marginTop: 6, textAlign: 'center' }}>
+              {voiceSupported()
+                ? heard
+                  ? `heard: “${heard}”`
+                  : 'listening — say “wide”, “no ball 6”, “1 and 1 d”, “undo”'
+                : 'This browser cannot listen. Voice needs a signal, so it will not work on a ground with none.'}
+            </div>
+          )}
 
           {/* R25a — the last man needs someone to run for him. */}
           {state.lastManActive && rules.lastManHasDeadrunner && !state.deadrunnerId && (
