@@ -29,7 +29,9 @@ import {
   removeAdmin,
   resetAll,
   saveGeneralSettings,
+  setVoiceEnabled,
   squadMembers,
+  voiceEnabled,
   useDB,
   useMutate,
 } from '../../lib/store';
@@ -306,6 +308,7 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
   const db = useDB();
   const mutate = useMutate();
   const [rules, setRules] = useState<RulesConfig>(fill(generalSettings(db)));
+  const [voice, setVoice] = useState(voiceEnabled(db));
 
   return (
     <Sheet title="General settings" onClose={onClose}>
@@ -314,11 +317,27 @@ function SettingsSheet({ onClose }: { onClose: () => void }) {
         series — each level re-shows them pre-filled.
       </div>
       <RulesEditor value={rules} onChange={setRules} />
+
+      <div className="lbl" style={{ marginTop: 18 }}>The app itself</div>
+      <div className="card" style={{ padding: '11px 13px' }}>
+        <div className="row">
+          <div style={{ flex: 1, fontSize: 13 }}>
+            Voice scoring
+            <div className="sub" style={{ fontSize: 10.5, marginTop: 2 }}>
+              An experiment, and off by default. It needs a signal, so it will not work on a ground
+              with none, and some phones cannot listen at all. With this on, the scoring pad offers
+              it.
+            </div>
+          </div>
+          <Toggle on={voice} onTap={() => setVoice(!voice)} />
+        </div>
+      </div>
+
       <Btn
         className="btn primary"
         style={{ marginTop: 12 }}
         onTap={() => {
-          mutate((d) => saveGeneralSettings(d, rules));
+          mutate((d) => setVoiceEnabled(saveGeneralSettings(d, rules), voice));
           onClose();
         }}
       >

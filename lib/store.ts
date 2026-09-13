@@ -208,13 +208,49 @@ export function generalSettings(db: DB): RulesConfigOverride {
   return (row?.config as RulesConfigOverride) ?? {};
 }
 
+/**
+ * App-level preferences that are not rules of the game.
+ *
+ * Voice is an experiment, so it stays out of RulesConfig — nothing the engine
+ * reads should depend on whether someone is talking to their phone.
+ */
+export function voiceEnabled(db: DB): boolean {
+  const row = db.app_settings.find((s) => s.scope === 'general');
+  return (row?.config as { voiceEnabled?: boolean } | undefined)?.voiceEnabled === true;
+}
+
+export function setVoiceEnabled(db: DB, on: boolean): DB {
+  const row = db.app_settings.find((s) => s.scope === 'general');
+  const config = { ...((row?.config as object) ?? {}), voiceEnabled: on };
+  return logActivity(
+    {
+      ...db,
+      app_settings: [
+        ...db.app_settings.filter((s) => s.scope !== 'general'),
+        { id: row?.id ?? uid(), scope: 'general', scope_id: null, config: config as never, updated_at: now() },
+      ],
+    },
+    on ? 'voice_enabled' : 'voice_disabled',
+    'voice scoring',
+  );
+}
+
 export function saveGeneralSettings(db: DB, config: RulesConfigOverride): DB {
+  const existing = db.app_settings.find((s) => s.scope === 'general');
   const rest = db.app_settings.filter((s) => s.scope !== 'general');
+  // Keep any app preference that lives alongside the rules.
+  const keep = { voiceEnabled: (existing?.config as { voiceEnabled?: boolean } | undefined)?.voiceEnabled };
   return logActivity({
     ...db,
     app_settings: [
       ...rest,
-      { id: uid(), scope: 'general', scope_id: null, config: config as never, updated_at: now() },
+      {
+        id: existing?.id ?? uid(),
+        scope: 'general',
+        scope_id: null,
+        config: { ...config, ...keep } as never,
+        updated_at: now(),
+      },
     ],
   }, 'settings_changed', 'general settings');
 }

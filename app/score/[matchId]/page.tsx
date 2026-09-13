@@ -29,6 +29,7 @@ import {
   startSecondInnings,
   useDB,
   useMutate,
+  voiceEnabled,
   voidLastBall,
   type DB,
 } from '../../../lib/store';
@@ -150,6 +151,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const [fixing, setFixing] = useState<string | null>(null);
   const [fixingDots, setFixingDots] = useState<string | null>(null);
   const [voice, setVoice] = useState<VoiceMode>('off');
+  const voiceOn = voiceEnabled(db);
   const [heard, setHeard] = useState<string | null>(null);
   useEffect(() => setVoice(loadVoiceMode()), []);
   const [autoIn, setAutoIn] = useState<string | null>(null);
@@ -163,10 +165,10 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
 
   // The microphone follows the setting, and nothing else turns it on.
   useEffect(() => {
-    if (voice === 'off' || !voiceSupported()) return;
+    if (!voiceOn || voice === 'off' || !voiceSupported()) return;
     const session = listen((phrase) => handleSpokenRef.current?.(phrase));
     return () => session.stop();
-  }, [voice]);
+  }, [voice, voiceOn]);
 
   // R30 — announce the over just finished.
   useEffect(() => {
@@ -717,7 +719,8 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             <Key onTap={() => setSheet('roster')}>Roster</Key>
           </div>
 
-          {/* Voice — an experiment, off unless it is turned on. */}
+          {/* Voice — hidden entirely unless an admin has enabled it. */}
+          {voiceOn && (
           <div className="krow" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
             {(
               [
@@ -748,7 +751,9 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
             ))}
           </div>
 
-          {voice !== 'off' && (
+          )}
+
+          {voiceOn && voice !== 'off' && (
             <div className="hint" style={{ marginTop: 6, textAlign: 'center' }}>
               {voiceSupported()
                 ? heard
