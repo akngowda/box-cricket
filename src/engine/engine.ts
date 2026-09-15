@@ -733,6 +733,7 @@ export function applyDelivery(
     endReason: s.endReason,
     announcement: '',
     commentary: '',
+    runsAnnouncement: '',
     overNo,
     ballNo,
   };
@@ -744,6 +745,7 @@ export function applyDelivery(
     isBody,
     dismissal ? dismissal.playerOutId === strikerId : null,
   );
+  result.runsAnnouncement = runsOnly(result, extra, declared, physical, isBody);
   result.commentary = describeBall(result, extra, declared, physical, isBody);
   return { state: s, result };
 }
@@ -936,6 +938,44 @@ function runsPhrase(n: number): string {
  * not what anyone shouts when the stumps go over. A run out is the exception
  * that carries runs, so it gets both, and it names which end went.
  */
+/**
+ * The runs, with nothing said about the wicket — so a screen that knows names
+ * can put "Jaideep caught out by Das" after them instead of the engine's
+ * nameless version.
+ */
+function runsOnly(
+  r: DeliveryResult,
+  extra: 'none' | 'wide' | 'noball',
+  declared: DeclaredRuns,
+  physical: number,
+  isBody: boolean,
+): string {
+  const parts: string[] = [];
+  if (extra === 'wide') parts.push('wide');
+  else if (extra === 'noball') parts.push('no ball');
+  if (isBody) {
+    parts.push('body hit');
+    return parts.join(', ');
+  }
+  if (r.multiplier === 2 && r.batRuns > 0) parts.push('doubled');
+
+  let sources = 0;
+  if (r.extras > 0) sources += 1;
+  if (declared > 0) {
+    const n = declared * r.multiplier;
+    parts.push(`${say(n)} ${n === 1 ? 'run' : 'runs'} ${r.contact}`);
+    sources += 1;
+  }
+  if (physical > 0) {
+    const n = physical * r.multiplier;
+    parts.push(`${say(n)} physical ${n === 1 ? 'run' : 'runs'}`);
+    sources += 1;
+  }
+  if (sources === 0) return r.wicket ? '' : 'dot ball';
+  if (sources > 1 || (declared === 0 && physical === 0)) parts.push(runsPhrase(r.teamRuns));
+  return parts.join(', ');
+}
+
 function announce(
   r: DeliveryResult,
   extra: 'none' | 'wide' | 'noball',

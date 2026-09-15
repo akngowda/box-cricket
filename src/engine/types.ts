@@ -272,6 +272,15 @@ export interface DeliveryResult {
   announcement: string;
   /** The written ball-by-ball line, which keeps the full detail (R34). */
   commentary: string;
+  /**
+   * Just the runs, with no mention of the wicket.
+   *
+   * The engine does not know anybody's name, so it can only say "batsman
+   * caught out". A screen that DOES know names wants to say "Jaideep caught
+   * out by Das" in one breath, and needs the runs separately to put in front
+   * of it. Empty when nothing was scored.
+   */
+  runsAnnouncement: string;
   /** Denormalised over/ball this delivery was bowled in (0-indexed over). */
   overNo: number;
   ballNo: number;

@@ -102,6 +102,19 @@ function legal(sel: Selection): Selection {
   return sel;
 }
 
+/** How a dismissal is said aloud, to follow a name. */
+const WICKET_SPOKEN: Record<WicketType, string> = {
+  bowled: 'bowled out',
+  caught: 'caught out',
+  runout: 'run out',
+  stumped: 'stumped out',
+  hitwicket: 'hit wicket',
+  dotout: 'out, three consecutive dots',
+  bodyout: 'out, three body hits',
+  retired_out: 'retired out',
+  retired_hurt: 'retired hurt',
+};
+
 const WICKET_LABEL: Record<WicketType, string> = {
   bowled: 'Bowled',
   caught: 'Caught',
@@ -318,11 +331,22 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
       // Say the ball unless it has already been read back — so a wicket, which
       // is committed from its sheet and never meets the clock, still gets its
       // runs spoken along with how he went.
-      const lines: string[] = announcedRef.current ? [] : [out.result.announcement];
+      const w = out.result.wicket;
+      const lines: string[] = [];
 
-      // Who is out, and who walks in.
-      if (out.result.wicket) {
-        lines.push(`${playerName(db, out.result.wicket.playerOutId)} out`);
+      // The runs, unless they have already been read back. On a wicket ball
+      // they are said without the engine's nameless "batsman caught out", so
+      // the dismissal can be given in one breath with the names on it.
+      if (!announcedRef.current) {
+        const runs = w ? out.result.runsAnnouncement : out.result.announcement;
+        if (runs !== '') lines.push(runs);
+      }
+
+      // One line for the dismissal: who, how, and off whom.
+      if (w) {
+        const by = w.fielderId ? ` by ${playerName(db, w.fielderId)}` : '';
+        lines.push(`${playerName(db, w.playerOutId)} ${WICKET_SPOKEN[w.type]}${by}`);
+
         const walking = out.state.strikerId ?? out.state.nonStrikerId;
         if (walking && walking !== state.strikerId && walking !== state.nonStrikerId) {
           lines.push(`${playerName(db, walking)} coming in`);
