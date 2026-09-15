@@ -304,7 +304,10 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     // upstream sooner. Scoring never waits for it.
     requestSync();
     if (audio) {
-      const lines: string[] = [out.result.announcement];
+      // With auto save on, the runs were read back the moment they were
+      // tapped. Saying them again here is the same ball twice, so on commit
+      // only the consequences are spoken.
+      const lines: string[] = autoSave ? [] : [out.result.announcement];
 
       // Who is out, and who walks in.
       if (out.result.wicket) {
@@ -321,7 +324,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
       else if (out.result.overCompleted) lines.push('end of over');
       else lines.push(`${left} ball${left === 1 ? '' : 's'} to go`);
 
-      speak(lines.join(', '));
+      if (lines.length > 0) speak(lines.join(', '));
     }
     navigator.vibrate?.(out.result.wicket ? [30, 50, 30] : 10);
     setSel(EMPTY);
