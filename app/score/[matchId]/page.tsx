@@ -165,6 +165,8 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   // Read at the moment the clock fires, not when it was set: the scorer can
   // tap Wicket on the last tick, and that ball must not save itself.
   const needsMoreRef = useRef(false);
+  // Read at the moment it speaks, so the line describes the settled ball.
+  const previewRef = useRef<DeliveryResult | null>(null);
 
   const board = current ? scoreboard(db, current, rules) : null;
   const opening = current ? openingOf(db, current.id) : null;
@@ -457,14 +459,20 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     (preview?.wicket?.automatic === true && availableBatsmen.length > 1);
 
   needsMoreRef.current = needsMore;
+  previewRef.current = preview;
 
   useEffect(() => {
     if (!autoSave || empty || needsMore || done || needsBowler) {
       setCountdown(null);
       return;
     }
-    // Read it back the moment it changes, so a wrong tap is heard at once.
-    if (audio && preview) speak(preview.announcement);
+    // Wait a second before reading it back. A ball is often two taps — the
+    // shot, then the running — and announcing the first one instantly means
+    // talking over the second. Every tap restarts this, so what gets spoken is
+    // the finished ball rather than each step towards it.
+    const announce = window.setTimeout(() => {
+      if (audio && previewRef.current) speak(previewRef.current.announcement);
+    }, 1000);
 
     setCountdown(2);
     const tick = window.setInterval(() => setCountdown((n) => (n === null ? null : n - 1)), 1000);
@@ -473,6 +481,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
       commitRef.current?.();
     }, 2000);
     return () => {
+      window.clearTimeout(announce);
       window.clearInterval(tick);
       window.clearTimeout(save);
     };
