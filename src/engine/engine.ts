@@ -739,6 +739,8 @@ export function applyDelivery(
   result.announcement = announce(
     result,
     extra,
+    declared,
+    physical,
     isBody,
     dismissal ? dismissal.playerOutId === strikerId : null,
   );
@@ -925,22 +927,27 @@ function runsPhrase(n: number): string {
 /**
  * The per-ball audio line.
  *
- * It says what happened, the way it would be called out on the turf: the runs
- * with their unit, the kind of extra, and for a wicket the manner of dismissal
- * instead of a number — because "no run" is not what anyone shouts when the
- * stumps go over. A run out is the one dismissal that carries runs, so it gets
- * both, and it names which end went.
+ * It breaks the ball into what it was made of — "two declared, one physical,
+ * three runs" — because that is what the scorer is checking as he taps. The
+ * total is only added when more than one thing contributed to it: with a
+ * single source the number has already been said, and repeating it is noise.
+ *
+ * A dismissal is called by its manner instead of a number, since "no run" is
+ * not what anyone shouts when the stumps go over. A run out is the exception
+ * that carries runs, so it gets both, and it names which end went.
  */
 function announce(
   r: DeliveryResult,
   extra: 'none' | 'wide' | 'noball',
+  declared: DeclaredRuns,
+  physical: number,
   isBody: boolean,
   outWasStriker: boolean | null,
 ): string {
   const parts: string[] = [];
   const w = r.wicket;
 
-  if (extra === 'wide') parts.push('wide ball');
+  if (extra === 'wide') parts.push('wide');
   else if (extra === 'noball') parts.push('no ball');
 
   // A dismissal that cannot carry runs is announced on its own.
@@ -979,10 +986,28 @@ function announce(
     return parts.join(', ');
   }
 
-  // Only the bat runs double. A wide in an impact over is still just a wide,
-  // so calling it "doubled" would be wrong as well as confusing.
+  // Doubling is called before the numbers, because it explains them.
   if (r.multiplier === 2 && r.batRuns > 0) parts.push('doubled');
-  parts.push(runsPhrase(r.teamRuns));
+
+  // What made up the runs, and how many sources there were.
+  let sources = 0;
+  if (r.extras > 0) sources += 1;
+  if (declared > 0) {
+    parts.push(`${say(declared * r.multiplier)} declared`);
+    sources += 1;
+  }
+  if (physical > 0) {
+    parts.push(`${say(physical * r.multiplier)} physical`);
+    sources += 1;
+  }
+
+  if (sources === 0) {
+    parts.push('dot ball');
+  } else if (sources > 1 || (declared === 0 && physical === 0)) {
+    // Either several things added up, or the only runs were the extra itself,
+    // which has not been said as a number yet.
+    parts.push(runsPhrase(r.teamRuns));
+  }
 
   // R14a — the only dismissal that comes with runs.
   if (w?.type === 'runout') {
