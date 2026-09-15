@@ -466,22 +466,18 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
       setCountdown(null);
       return;
     }
-    // Wait a second before reading it back. A ball is often two taps — the
-    // shot, then the running — and announcing the first one instantly means
-    // talking over the second. Every tap restarts this, so what gets spoken is
-    // the finished ball rather than each step towards it.
-    const announce = window.setTimeout(() => {
-      if (audio && previewRef.current) speak(previewRef.current.announcement);
-    }, 1000);
-
+    // One clock, not two: two seconds after the last tap the ball is read back
+    // and saved. A ball is often several taps — the shot, then the running —
+    // and every one of them starts the two seconds again, so what gets spoken
+    // is the finished ball rather than each step towards it.
     setCountdown(2);
     const tick = window.setInterval(() => setCountdown((n) => (n === null ? null : n - 1)), 1000);
     const save = window.setTimeout(() => {
       if (needsMoreRef.current) return; // something was tapped that needs saying
+      if (audio && previewRef.current) speak(previewRef.current.announcement);
       commitRef.current?.();
     }, 2000);
     return () => {
-      window.clearTimeout(announce);
       window.clearInterval(tick);
       window.clearTimeout(save);
     };
