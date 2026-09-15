@@ -260,9 +260,9 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     const key = `${current.id}:${over}:${state.currentBowlerId}`;
     if (bowlerSpoken.current === key) return;
     bowlerSpoken.current = key;
-    speak(
-      `${playerName(db, state.currentBowlerId)} starting over ${over + 1}, ${rules.ballsPerOver} balls to go`,
-    );
+    // Just the name. How many are left is said after each ball, where it
+    // means something — a wide off the first one still leaves six to come.
+    speak(`${playerName(db, state.currentBowlerId)} coming into bowl`);
   }, [state.currentBowlerId, over, inOver, audio]);
 
 
