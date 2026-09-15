@@ -162,6 +162,9 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   // rather than being torn down and restarted on every ball.
   const handleSpokenRef = useRef<((phrase: string) => void) | null>(null);
   const commitRef = useRef<(() => void) | null>(null);
+  // Read at the moment the clock fires, not when it was set: the scorer can
+  // tap Wicket on the last tick, and that ball must not save itself.
+  const needsMoreRef = useRef(false);
 
   const board = current ? scoreboard(db, current, rules) : null;
   const opening = current ? openingOf(db, current.id) : null;
@@ -450,6 +453,8 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     sheet !== 'none' ||
     (preview?.wicket?.automatic === true && availableBatsmen.length > 1);
 
+  needsMoreRef.current = needsMore;
+
   useEffect(() => {
     if (!autoSave || empty || needsMore || done || needsBowler) {
       setCountdown(null);
@@ -460,7 +465,10 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
 
     setCountdown(2);
     const tick = window.setInterval(() => setCountdown((n) => (n === null ? null : n - 1)), 1000);
-    const save = window.setTimeout(() => commitRef.current?.(), 2000);
+    const save = window.setTimeout(() => {
+      if (needsMoreRef.current) return; // something was tapped that needs saying
+      commitRef.current?.();
+    }, 2000);
     return () => {
       window.clearInterval(tick);
       window.clearTimeout(save);
@@ -777,19 +785,23 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
               onTap={() => commit()}
               buzz={preview?.wicket ? [30, 50, 30] : 10}
             >
-              {preview?.wicket
-                ? WICKET_LABEL[preview.wicket.type]
-                : countdown !== null
-                  ? `Saving in ${countdown}…`
-                  : preview?.isImpactBall
-                    ? 'Save ×2'
-                    : 'Save'}
+              {needsMore && !empty
+                ? 'Holding'
+                : preview?.wicket
+                  ? WICKET_LABEL[preview.wicket.type]
+                  : countdown !== null
+                    ? `Saving in ${countdown}…`
+                    : preview?.isImpactBall
+                      ? 'Save ×2'
+                      : 'Save'}
               <small>
-                {countdown !== null
-                  ? 'tap to save now, or keep adding'
-                  : autoSave
-                    ? 'saves itself once you stop'
-                    : 'tap to save'}
+                {needsMore && !empty
+                  ? 'waiting for the rest of it'
+                  : countdown !== null
+                    ? 'tap to save now, or keep adding'
+                    : autoSave
+                      ? 'saves itself once you stop'
+                      : 'tap to save'}
               </small>
             </Key>
           </div>
