@@ -1386,3 +1386,44 @@ describe('R20 — one impact over per innings', () => {
     expect(() => applyEvent(s, { type: 'impact_over_undone' }, r)).toThrow(/R20e/);
   });
 })
+
+describe('R26 — moving the innings to the right batsman', () => {
+  it('carries the runs and balls across, and frees the wrong man to bat later', () => {
+    const r = rules({ threeDotOut: true });
+    // b3 was put in by mistake and has faced three balls.
+    let s = bowl(innings(), { wicket: { type: 'bowled', newBatsmanId: 'b3' } }, r).state;
+    s = bowl(s, { declaredRuns: 4, contact: 'direct' }, r).state;
+    s = bowl(s, DOT, r).state;
+    expect(s.batsmen.b3?.runs).toBe(4);
+    expect(s.batsmen.b3?.ballsFaced).toBe(2);
+
+    s = applyEvent(
+      s,
+      { type: 'batsman_corrected', outgoingId: 'b3', incomingId: 'b4', transferInnings: true },
+      r,
+    );
+
+    // It was b4 batting all along.
+    expect(s.batsmen.b4?.runs).toBe(4);
+    expect(s.batsmen.b4?.ballsFaced).toBe(2);
+    expect(s.batsmen.b4?.dotStreak).toBe(1);
+    expect(s.strikerId).toBe('b4');
+
+    // And b3 never batted, so he is still to come.
+    expect(s.batsmen.b3?.runs).toBe(0);
+    expect(s.batsmen.b3?.ballsFaced).toBe(0);
+    expect(s.batsmen.b3?.hasBatted).toBe(false);
+    expect(s.batsmen.b3?.isOut).toBe(false);
+
+    // The team total is untouched: nothing was scored twice.
+    expect(s.runs).toBe(4);
+  });
+
+  it('leaves the innings where it was when the runs really were his', () => {
+    const r = DEFAULT_RULES;
+    let s = bowl(innings(), { declaredRuns: 6, contact: 'direct' }, r).state;
+    s = applyEvent(s, { type: 'batsman_corrected', outgoingId: 'b1', incomingId: 'b3' }, r);
+    expect(s.batsmen.b1?.runs).toBe(6);
+    expect(s.batsmen.b3?.runs).toBe(0);
+  });
+})

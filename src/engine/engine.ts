@@ -310,11 +310,39 @@ export function applyEvent(
         throw new EngineError('That batsman is not at the crease', 'R26');
       }
       incoming.hasBatted = true;
-
-      // The man being taken off was put in by mistake. If he never faced a
-      // ball he has not batted at all, so let him come in again later — the
-      // old behaviour quietly removed him from every future list.
       const outgoing = s.batsmen[event.outgoingId];
+
+      // The cricket happened; only the name was wrong. Carry the innings over
+      // so the runs, the balls and the dot streak follow the man who was
+      // actually batting.
+      if (outgoing && event.transferInnings) {
+        incoming.runs += outgoing.runs;
+        incoming.ballsFaced += outgoing.ballsFaced;
+        incoming.ballHistory = [...incoming.ballHistory, ...outgoing.ballHistory];
+        incoming.dotStreak = outgoing.dotStreak;
+        incoming.bodyHits += outgoing.bodyHits;
+        incoming.nextDotDismisses = outgoing.nextDotDismisses;
+        incoming.suddenDeath = outgoing.suddenDeath;
+        incoming.zoneCounts = incoming.zoneCounts.map(
+          (n, i) => n + (outgoing.zoneCounts[i] ?? 0),
+        ) as [number, number, number, number];
+        incoming.contactCounts = {
+          pitched: incoming.contactCounts.pitched + outgoing.contactCounts.pitched,
+          direct: incoming.contactCounts.direct + outgoing.contactCounts.direct,
+        };
+
+        outgoing.runs = 0;
+        outgoing.ballsFaced = 0;
+        outgoing.ballHistory = [];
+        outgoing.dotStreak = 0;
+        outgoing.bodyHits = 0;
+        outgoing.nextDotDismisses = false;
+        outgoing.suddenDeath = false;
+        outgoing.zoneCounts = [0, 0, 0, 0];
+        outgoing.contactCounts = { pitched: 0, direct: 0 };
+      }
+
+      // He was never really in, so he is still to bat and will come in later.
       if (outgoing && outgoing.ballsFaced === 0 && outgoing.runs === 0 && !outgoing.isOut) {
         outgoing.hasBatted = false;
       }

@@ -418,3 +418,28 @@ describe('R7d — undo can step back out of a chase', () => {
     expect(scoreboard(after, first, rules)!.state.legalBalls).toBe(1);
   });
 });
+
+describe('R26a — the batsman the scorer picked is the one who walks in', () => {
+  it('survives the replay, rather than reverting to whoever is first alphabetically', () => {
+    const rules = { ...DEFAULT_RULES };
+    const { db, matchId } = setUp({}, [4, 3]);
+    let after = startInnings(db, matchId, rules);
+    const innings = after.innings[0]!;
+
+    const board = scoreboard(after, innings, rules)!;
+    const order = board.state.battingOrder;
+    // Somebody other than the next man in the order.
+    const chosen = order[order.length - 1]!;
+    expect(board.state.batsmen[chosen]?.hasBatted).toBe(false);
+
+    after = score(after, innings.id, rules, {
+      wicket: { type: 'bowled', newBatsmanId: chosen },
+    });
+
+    // The score is derived by replaying the log, so this is the real test: the
+    // choice has to be IN the log, not just in the screen that made it.
+    const replayed = scoreboard(after, innings, rules)!;
+    expect(replayed.state.strikerId).toBe(chosen);
+    expect(after.deliveries[0]!.new_batsman_id).toBe(chosen);
+  });
+});

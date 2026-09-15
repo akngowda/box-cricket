@@ -36,7 +36,7 @@ import {
 import { requestSync } from '../../../lib/sync';
 import { listen, loadVoiceMode, saveVoiceMode, voiceSupported, type VoiceMode } from '../../../lib/voice';
 import { parseCommand, type Player } from '../../../src/voice/parser';
-import { Btn, Sheet, tapProps, TopBar } from '../../../lib/ui';
+import { Btn, Sheet, tapProps, Toggle, TopBar } from '../../../lib/ui';
 import { toDeliveryRow } from '../../../src/db/mappers';
 import {
   applyDelivery,
@@ -923,8 +923,8 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
           state={state}
           outgoingId={fixing}
           onClose={() => setFixing(null)}
-          onPick={(incomingId) => {
-            event('batsman_corrected', { outgoingId: fixing, incomingId });
+          onPick={(incomingId, transferInnings) => {
+            event('batsman_corrected', { outgoingId: fixing, incomingId, transferInnings });
             setFixing(null);
           }}
         />
@@ -1095,20 +1095,49 @@ function FixBatsman({
   state: InningsState;
   outgoingId: string;
   onClose: () => void;
-  onPick: (incomingId: string) => void;
+  onPick: (incomingId: string, transferInnings: boolean) => void;
 }) {
+  const out = state.batsmen[outgoingId];
+  const hasInnings = (out?.ballsFaced ?? 0) > 0 || (out?.runs ?? 0) > 0;
+  // If he has faced balls, the cricket was real and somebody made those runs —
+  // so moving them across is the usual answer, not the exception.
+  const [transfer, setTransfer] = useState(hasInnings);
+
   const choices = state.battingOrder
     .filter((id) => id !== state.strikerId && id !== state.nonStrikerId && !state.batsmen[id]?.isOut)
     .sort((a, b) => playerName(db, a).localeCompare(playerName(db, b)));
+
   return (
     <Sheet title={`Replace ${playerName(db, outgoingId)}`} onClose={onClose}>
       <div className="hint" style={{ marginBottom: 10 }}>
-        For a mis-tap: this puts someone else at the crease from here on. Runs already scored stay
-        with whoever they were credited to — undo the ball instead if they went to the wrong man.
+        For a mis-tap. {playerName(db, outgoingId)} goes back to waiting — he is not out, so he can
+        still bat later.
       </div>
+
+      {hasInnings && (
+        <div className="card" style={{ padding: '11px 13px', marginBottom: 12 }}>
+          <div className="row">
+            <div style={{ flex: 1, fontSize: 13 }}>
+              Move his {out?.runs ?? 0} run{(out?.runs ?? 0) === 1 ? '' : 's'} off{' '}
+              {out?.ballsFaced ?? 0} ball{(out?.ballsFaced ?? 0) === 1 ? '' : 's'}
+              <div className="sub" style={{ fontSize: 10.5, marginTop: 2 }}>
+                {transfer
+                  ? 'The name was wrong, not the cricket — they go to the man coming in.'
+                  : 'They stay where they are, and the new man starts on nothing.'}
+              </div>
+            </div>
+            <Toggle on={transfer} onTap={() => setTransfer(!transfer)} />
+          </div>
+        </div>
+      )}
+
       <div className="grid2">
         {choices.map((id) => (
-          <Opt key={id} onTap={() => onPick(id)} style={{ fontSize: 18, minHeight: 58 }}>
+          <Opt
+            key={id}
+            onTap={() => onPick(id, transfer)}
+            style={{ fontSize: 18, minHeight: 58 }}
+          >
             {playerName(db, id)}
           </Opt>
         ))}

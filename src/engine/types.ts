@@ -299,7 +299,19 @@ export type MatchEvent =
    * from here on; runs already recorded stay with whoever they were credited
    * to, because the log is what happened, not what should have happened.
    */
-  | { type: 'batsman_corrected'; outgoingId: string; incomingId: string }
+  | {
+      type: 'batsman_corrected';
+      outgoingId: string;
+      incomingId: string;
+      /**
+       * Move what the wrong man has scored across to the right one.
+       *
+       * If the mistake was noticed a few balls late, those runs were made by
+       * the player who was actually batting — the name was wrong, not the
+       * cricket. Without this they would stay on a man who never faced a ball.
+       */
+      transferInnings?: boolean;
+    }
   /**
    * R16 — set a batsman's dot streak by hand.
    *

@@ -184,6 +184,8 @@ export interface DeliveryRow {
     | null;
   player_out_id: string | null;
   fielder_id: string | null;
+  /** Who came in. Without this the replay guesses, and guesses wrong. */
+  new_batsman_id: string | null;
   /** Denormalised — always recomputable by replaying through the engine. */
   team_runs: number;
   batsman_runs: number;

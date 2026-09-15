@@ -96,7 +96,12 @@ function toEngineEvent(type: string, payload: Record<string, unknown>): MatchEve
       return typeof payload.playerId === 'string' ? { type: 'squad_player_added', playerId: payload.playerId } : null;
     case 'batsman_corrected':
       return typeof payload.outgoingId === 'string' && typeof payload.incomingId === 'string'
-        ? { type: 'batsman_corrected', outgoingId: payload.outgoingId, incomingId: payload.incomingId }
+        ? {
+            type: 'batsman_corrected',
+            outgoingId: payload.outgoingId,
+            incomingId: payload.incomingId,
+            transferInnings: payload.transferInnings === true,
+          }
         : null;
     case 'dot_count_set':
       return typeof payload.playerId === 'string' && typeof payload.dots === 'number'

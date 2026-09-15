@@ -63,6 +63,8 @@ export function toDeliveryRow(
     wicket_type: result.wicket?.type ?? null,
     player_out_id: result.wicket?.playerOutId ?? null,
     fielder_id: result.wicket?.fielderId ?? null,
+    // The scorer's choice of replacement, so the replay does not have to guess.
+    new_batsman_id: input.wicket?.newBatsmanId ?? input.newBatsmanId ?? null,
     team_runs: result.teamRuns,
     batsman_runs: result.batsmanRuns,
     bowler_conceded: result.bowlerConceded,
@@ -85,12 +87,15 @@ export function toStoredDelivery(row: DeliveryRow): StoredDelivery {
     bowlerId: row.bowler_id,
   };
   // R16c — automatic dismissals are re-derived by the engine on replay, so
-  // they must not be fed back in as explicit wickets.
+  // they must not be fed back in as explicit wickets. Either way the man who
+  // walked in is carried through, or the replay would pick someone else.
+  if (row.new_batsman_id) stored.newBatsmanId = row.new_batsman_id;
   if (row.wicket_type && row.wicket_type !== 'dotout' && row.wicket_type !== 'bodyout') {
     stored.wicket = {
       type: row.wicket_type,
       ...(row.player_out_id ? { playerOutId: row.player_out_id } : {}),
       ...(row.fielder_id ? { fielderId: row.fielder_id } : {}),
+      ...(row.new_batsman_id ? { newBatsmanId: row.new_batsman_id } : {}),
     };
   }
   return stored;

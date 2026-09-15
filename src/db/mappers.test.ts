@@ -37,9 +37,10 @@ let db: PGlite;
 beforeAll(async () => {
   db = new PGlite();
   await db.exec(sql('supabase/tests/00_auth_stub.sql'));
-  await db.exec(sql('supabase/migrations/0001_init.sql'));
-  await db.exec(sql('supabase/migrations/0002_rls.sql'));
+  // The file the admin actually runs, so this test cannot drift behind it.
+  await db.exec(sql('supabase/setup.sql'));
   await db.exec(`
+    insert into public.allowed_admins (email) values ('scorer@example.com');
     insert into auth.users (id, email) values ('${SCORER}', 'scorer@example.com');
     insert into public.players (id, name) values
       ('${P.b1}', 'Rahul'), ('${P.b2}', 'Kiran'), ('${P.b3}', 'Vinay'),
