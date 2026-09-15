@@ -151,6 +151,8 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const [fixing, setFixing] = useState<string | null>(null);
   const [fixingDots, setFixingDots] = useState<string | null>(null);
   const [voice, setVoice] = useState<VoiceMode>('off');
+  const [autoSave, setAutoSave] = useState(true);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const voiceOn = voiceEnabled(db);
   const [heard, setHeard] = useState<string | null>(null);
   useEffect(() => setVoice(loadVoiceMode()), []);
@@ -159,6 +161,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   // The handler closes over live state, so the listener reads it through a ref
   // rather than being torn down and restarted on every ball.
   const handleSpokenRef = useRef<((phrase: string) => void) | null>(null);
+  const commitRef = useRef<(() => void) | null>(null);
 
   const board = current ? scoreboard(db, current, rules) : null;
   const opening = current ? openingOf(db, current.id) : null;
@@ -247,6 +250,19 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   /** Declared, bowled, and gone — one per innings, so there is no second. */
   const impactOverSpent = state.impactOverNumber !== null && state.impactOverNumber < over;
 
+  // A new man at the top of his mark, and how long he has.
+  const bowlerSpoken = useRef<string | null>(null);
+  useEffect(() => {
+    if (!audio || !state.currentBowlerId || inOver !== 0) return;
+    const key = `${current.id}:${over}:${state.currentBowlerId}`;
+    if (bowlerSpoken.current === key) return;
+    bowlerSpoken.current = key;
+    speak(
+      `${playerName(db, state.currentBowlerId)} starting over ${over + 1}, ${rules.ballsPerOver} balls to go`,
+    );
+  }, [state.currentBowlerId, over, inOver, audio]);
+
+
   /** Who is left to walk in, by name, so the list reads the same every time. */
   const availableBatsmen = state.battingOrder
     .filter((id) => !state.batsmen[id]?.hasBatted && !state.batsmen[id]?.isOut)
@@ -284,12 +300,32 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     // The ball is already saved locally; this only asks the loop to get it
     // upstream sooner. Scoring never waits for it.
     requestSync();
-    if (audio && rules.audioPerBall) speak(out.result.announcement);
+    if (audio) {
+      const lines: string[] = [out.result.announcement];
+
+      // Who is out, and who walks in.
+      if (out.result.wicket) {
+        lines.push(`${playerName(db, out.result.wicket.playerOutId)} out`);
+        const walking = out.state.strikerId ?? out.state.nonStrikerId;
+        if (walking && walking !== state.strikerId && walking !== state.nonStrikerId) {
+          lines.push(`${playerName(db, walking)} coming in`);
+        }
+      }
+
+      // How much of the over is left — the thing everyone asks between balls.
+      const left = rules.ballsPerOver - ballsInCurrentOver(out.state, rules);
+      if (out.state.status === 'complete') lines.push('innings over');
+      else if (out.result.overCompleted) lines.push('end of over');
+      else lines.push(`${left} ball${left === 1 ? '' : 's'} to go`);
+
+      speak(lines.join(', '));
+    }
     navigator.vibrate?.(out.result.wicket ? [30, 50, 30] : 10);
     setSel(EMPTY);
     setAutoIn(null);
     setSheet('none');
   };
+  commitRef.current = () => commit();
 
   // R7d — Undo clears a half-made selection, else steps back a ball. When
   // there is nothing left to step back in this innings and the chase has only
@@ -399,6 +435,38 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     .at(-1);
 
   handleSpokenRef.current = handleSpoken;
+
+  /**
+   * Hands-off scoring.
+   *
+   * Tapping a run and then reaching for Save doubles the work on the ball you
+   * score most often. So the pad reads back what it has — "wide, one run" —
+   * and saves it a couple of seconds later, which is long enough to add the
+   * running or change your mind. Anything that still needs detail stops it: a
+   * wicket has to be described, and a third dot has to be answered.
+   */
+  const empty = JSON.stringify(sel) === JSON.stringify(EMPTY);
+  const needsMore =
+    sheet !== 'none' ||
+    (preview?.wicket?.automatic === true && availableBatsmen.length > 1);
+
+  useEffect(() => {
+    if (!autoSave || empty || needsMore || done || needsBowler) {
+      setCountdown(null);
+      return;
+    }
+    // Read it back the moment it changes, so a wrong tap is heard at once.
+    if (audio && preview) speak(preview.announcement);
+
+    setCountdown(2);
+    const tick = window.setInterval(() => setCountdown((n) => (n === null ? null : n - 1)), 1000);
+    const save = window.setTimeout(() => commitRef.current?.(), 2000);
+    return () => {
+      window.clearInterval(tick);
+      window.clearTimeout(save);
+    };
+    // Any change to the selection restarts the window.
+  }, [sel, autoSave, empty, needsMore, done, needsBowler]);
 
   return (
     <div className="app">
@@ -709,11 +777,28 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
               onTap={() => commit()}
               buzz={preview?.wicket ? [30, 50, 30] : 10}
             >
-              {preview?.wicket ? WICKET_LABEL[preview.wicket.type] : preview?.isImpactBall ? 'Save ×2' : 'Save'}
+              {preview?.wicket
+                ? WICKET_LABEL[preview.wicket.type]
+                : countdown !== null
+                  ? `Saving in ${countdown}…`
+                  : preview?.isImpactBall
+                    ? 'Save ×2'
+                    : 'Save'}
+              <small>
+                {countdown !== null
+                  ? 'tap to save now, or keep adding'
+                  : autoSave
+                    ? 'saves itself once you stop'
+                    : 'tap to save'}
+              </small>
             </Key>
           </div>
 
-          <div className="krow" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+          <div className="krow" style={{ gridTemplateColumns: '1fr 1fr 1fr 1fr' }}>
+            <Key on={autoSave} onTap={() => setAutoSave(!autoSave)}>
+              Auto save
+              <small>{autoSave ? 'on' : 'off'}</small>
+            </Key>
             <Key onTap={() => event('strike_switched_manually')}>Switch side</Key>
             <Key onTap={() => setSheet('bowler')}>Bowler</Key>
             <Key onTap={() => setSheet('roster')}>Roster</Key>
