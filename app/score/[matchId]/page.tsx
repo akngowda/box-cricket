@@ -167,6 +167,15 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
   const needsMoreRef = useRef(false);
   // Read at the moment it speaks, so the line describes the settled ball.
   const previewRef = useRef<DeliveryResult | null>(null);
+  /**
+   * Has this ball already been read back?
+   *
+   * The two-second clock speaks the ball and saves it together, but a wicket
+   * never reaches that clock: opening the sheet holds it, and the ball is
+   * committed from the sheet instead. Without this, the runs on a wicket ball
+   * — a run out off a no ball, say — were never spoken at all.
+   */
+  const announcedRef = useRef(false);
 
   const board = current ? scoreboard(db, current, rules) : null;
   const opening = current ? openingOf(db, current.id) : null;
@@ -306,10 +315,10 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     // upstream sooner. Scoring never waits for it.
     requestSync();
     if (audio) {
-      // With auto save on, the runs were read back the moment they were
-      // tapped. Saying them again here is the same ball twice, so on commit
-      // only the consequences are spoken.
-      const lines: string[] = autoSave ? [] : [out.result.announcement];
+      // Say the ball unless it has already been read back — so a wicket, which
+      // is committed from its sheet and never meets the clock, still gets its
+      // runs spoken along with how he went.
+      const lines: string[] = announcedRef.current ? [] : [out.result.announcement];
 
       // Who is out, and who walks in.
       if (out.result.wicket) {
@@ -332,6 +341,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     setSel(EMPTY);
     setAutoIn(null);
     setSheet('none');
+    announcedRef.current = false;
   };
   commitRef.current = () => commit();
 
@@ -460,6 +470,7 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
 
   needsMoreRef.current = needsMore;
   previewRef.current = preview;
+  if (empty) announcedRef.current = false;
 
   useEffect(() => {
     if (!autoSave || empty || needsMore || done || needsBowler) {
@@ -474,7 +485,10 @@ function Pad({ db, match }: { db: DB; match: MatchRow }) {
     const tick = window.setInterval(() => setCountdown((n) => (n === null ? null : n - 1)), 1000);
     const save = window.setTimeout(() => {
       if (needsMoreRef.current) return; // something was tapped that needs saying
-      if (audio && previewRef.current) speak(previewRef.current.announcement);
+      if (audio && previewRef.current) {
+        speak(previewRef.current.announcement);
+        announcedRef.current = true;
+      }
       commitRef.current?.();
     }, 2000);
     return () => {
