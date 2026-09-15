@@ -1003,17 +1003,17 @@ describe('R16 / R30 — ball history and audio', () => {
   it('R30 — a ball is broken into what made it up', () => {
     // Two sources, so the total is worth saying.
     expect(bowl(innings(), { ...SIX, physicalRuns: 1 }).result.announcement).toBe(
-      'six declared, one physical, seven runs',
+      'six runs direct, one physical run, seven runs',
     );
     expect(bowl(innings(), { ...FOUR, physicalRuns: 2 }).result.announcement).toBe(
-      'four declared, two physical, six runs',
+      'four runs direct, two physical runs, six runs',
     );
 
     // One source: the number has already been said, so it is not repeated.
     expect(bowl(innings(), { declaredRuns: 1, contact: 'pitched' }).result.announcement).toBe(
-      'one declared',
+      'one run pitched',
     );
-    expect(bowl(innings(), { physicalRuns: 2 }).result.announcement).toBe('two physical');
+    expect(bowl(innings(), { physicalRuns: 2 }).result.announcement).toBe('two physical runs');
     expect(bowl(innings(), DOT).result.announcement).toBe('dot ball');
   });
 
@@ -1023,7 +1023,7 @@ describe('R16 / R30 — ball history and audio', () => {
     expect(bowl(innings(), { extra: 'wide' }).result.announcement).toBe('wide, one run');
     // The extra plus the bat: both named, then the total.
     expect(bowl(innings(), { extra: 'noball', declaredRuns: 1, contact: 'pitched' }).result.announcement).toBe(
-      'no ball, one declared, three runs',
+      'no ball, one run pitched, three runs',
     );
     expect(bowl(innings(), { isBodyHit: true }, r).result.announcement).toBe('body hit');
   });
@@ -1032,7 +1032,7 @@ describe('R16 / R30 — ball history and audio', () => {
     const r = DEFAULT_RULES;
     const s = applyEvent(innings(), { type: 'impact_over_declared', overNo: 0 }, r);
     expect(bowl(s, { ...SIX, physicalRuns: 1 }, r).result.announcement).toBe(
-      'doubled, twelve declared, two physical, fourteen runs',
+      'doubled, twelve runs direct, two physical runs, fourteen runs',
     );
     expect(bowl(s, DOT, r).result.announcement).toBe('dot ball');
   });
@@ -1067,14 +1067,14 @@ describe('R16 / R30 — ball history and audio', () => {
       physicalRuns: 2,
       wicket: { type: 'runout', playerOutId: 'b1', newBatsmanId: 'b3', newBatsmanOnStrike: false },
     });
-    expect(striker.result.announcement).toBe('two physical, batsman run out');
+    expect(striker.result.announcement).toBe('two physical runs, batsman run out');
 
     const nonStriker = bowl(innings(), {
       declaredRuns: 1,
       contact: 'pitched',
       wicket: { type: 'runout', playerOutId: 'b2', newBatsmanId: 'b3', newBatsmanOnStrike: false },
     });
-    expect(nonStriker.result.announcement).toBe('one declared, non striker run out');
+    expect(nonStriker.result.announcement).toBe('one run pitched, non striker run out');
 
     // On a no ball too: the extra is named, the runs still count.
     const offNoBall = bowl(innings(), {
@@ -1083,7 +1083,7 @@ describe('R16 / R30 — ball history and audio', () => {
       wicket: { type: 'runout', playerOutId: 'b2', newBatsmanId: 'b3', newBatsmanOnStrike: false },
     });
     expect(offNoBall.result.announcement).toBe(
-      'no ball, one physical, three runs, non striker run out',
+      'no ball, one physical run, three runs, non striker run out',
     );
   });
 
@@ -1128,7 +1128,7 @@ describe('R30 — audio at the end of an over and the end of a match', () => {
     const s = applyEvent(innings(), { type: 'impact_over_declared', overNo: 0 }, r);
     expect(bowl(s, { extra: 'wide' }, r).result.announcement).toBe('wide, one run');
     // The bat still doubles on the same over.
-    expect(bowl(s, SIX, r).result.announcement).toBe('doubled, twelve declared');
+    expect(bowl(s, SIX, r).result.announcement).toBe('doubled, twelve runs direct');
   });
 });
 

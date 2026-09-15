@@ -993,11 +993,16 @@ function announce(
   let sources = 0;
   if (r.extras > 0) sources += 1;
   if (declared > 0) {
-    parts.push(`${say(declared * r.multiplier)} declared`);
+    // How it was struck matters as much as the number: the same two can come
+    // from zone 2 pitched or zone 1 direct, and the scorer is checking he
+    // tapped the right row.
+    const n = declared * r.multiplier;
+    parts.push(`${say(n)} ${n === 1 ? 'run' : 'runs'} ${r.contact}`);
     sources += 1;
   }
   if (physical > 0) {
-    parts.push(`${say(physical * r.multiplier)} physical`);
+    const n = physical * r.multiplier;
+    parts.push(`${say(n)} physical ${n === 1 ? 'run' : 'runs'}`);
     sources += 1;
   }
 
